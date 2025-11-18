@@ -675,10 +675,6 @@ def data_prepare_coarse_grain_rolling(
     
     示例场景（滑动窗口）：
     - coarse_grain_period='2h', feature_lookback_bars=8, rolling_step='15min'
-    - 在9:00时刻：从原始数据提取 [前一天17:00, 9:00] 的数据，重采样为2h桶，计算特征，预测9:00-11:00收益
-    - 在9:15时刻：从原始数据提取 [前一天17:15, 9:15] 的数据，重采样为2h桶，计算特征，预测9:15-11:15收益
-    - 在9:30时刻：从原始数据提取 [前一天17:30, 9:30] 的数据，重采样为2h桶，计算特征，预测9:30-11:30收益
-    
     优势：
     - 每个时间点的特征窗口都是独立的，避免了数据泄露和样本相关性问题
     - 滚动步长可以任意设置，不受粗粒度周期限制
@@ -692,7 +688,6 @@ def data_prepare_coarse_grain_rolling(
     print(f"品种: {sym}")
     print(f"粗粒度周期: {coarse_grain_period}")
     print(f"特征窗口: {feature_lookback_bars} × {coarse_grain_period} = {feature_lookback_bars * pd.Timedelta(coarse_grain_period).total_seconds() / 3600:.1f}小时")
-    print(f"滚动步长: {rolling_step}")
     print(f"预测周期: {y_train_ret_period} × {rolling_step} = {y_train_ret_period * pd.Timedelta(rolling_step).total_seconds() / 3600:.1f}小时")
     print(f"注意：每个时间点都会独立计算其滑动窗口特征，避免重复使用相同的粗粒度桶")
     print(f"{'='*60}\n")
@@ -703,10 +698,6 @@ def data_prepare_coarse_grain_rolling(
     z_raw.index = pd.to_datetime(z_raw.index)
     
     # 扩展数据范围以容纳特征窗口
-    feature_window_timedelta = pd.Timedelta(coarse_grain_period) * feature_lookback_bars
-    # extended_start = pd.to_datetime(start_date_train) - feature_window_timedelta - pd.Timedelta('1d')  # 多留1天buffer
-    
-    # z_raw = z_raw[(z_raw.index >= extended_start) & (z_raw.index <= pd.to_datetime(end_date_test))]
     
     z_raw = z_raw[(z_raw.index >= pd.to_datetime(start_date_train)) 
                   & (z_raw.index <= pd.to_datetime(end_date_test))]  # 只截取参数指定部分dataframe
@@ -739,7 +730,33 @@ def data_prepare_coarse_grain_rolling(
             z_raw_offset.index = z_raw_offset.index - offset
             
             # Resample（边界会自动对齐到0:00, 2:00, 4:00...）
-            coarse_bars = resample(z_raw_offset, coarse_grain_period)
+            # closed = 'right'
+            # 区间: (8:00, 10:00]
+            # 不包含: 8:00
+            # 包含: 8:15, 8:30, 8:45, ..., 10:00
+
+            # label='right'：使用区间右边界作为标签
+            # 区间 (8:00, 10:00] → 标签是 10:00
+            # 默认方式 (closed='left', label='left')：
+            #         时间轴:  8:00  8:15  8:30  ...  9:45  10:00
+            #      |<------- 特征窗口 ------->|
+            #      ^标签
+            #      |
+            # 在8:00时刻预测
+            # 但特征包含了8:15-9:45的未来数据！
+
+            # 修复方式 (closed='right', label='right')：
+            # 时间轴:  8:00  8:15  8:30  ...  9:45  10:00
+            #           |<------- 特征窗口 ------->|
+            #                                       ^标签
+            #                                       |
+            #                                在10:00时刻预测
+            #                                特征只包含历史数据✓
+                    # 在偏移坐标系：标签10:00，区间(8:00, 10:00]
+                    # 包含偏移时间：8:15, 8:30, ..., 10:00
+                    # 对应原始时间：8:30, 8:45, ..., 10:15
+
+            coarse_bars = resample(z_raw_offset, coarse_grain_period, closed='right', label='right')
             
             # 恢复原始时间
             coarse_bars.index = coarse_bars.index + offset
@@ -752,26 +769,21 @@ def data_prepare_coarse_grain_rolling(
                 (coarse_bars.index <= original_end)
             ]
 
-            print(f"  - 桶数量: {len(coarse_bars)}")
-            print(f"  - 计算BaseFeature...")
-            
             # 计算特征
             base_feature = originalFeature.BaseFeature(coarse_bars.copy(), include_categories = include_categories, rolling_zscore_window = int(rolling_w / num_offsets))
             features_df = base_feature.init_feature_df
-            if i == num_offsets - 1:
-                print('hello')
-            # 🚀 优化：预计算return_f，避免每个时间点重复计算
-            print(f"  - 预计算return_f...")
+
             row_timestamps = features_df.index
             
             # 向量化获取当前时刻的价格
             t_prices = z_raw['c'].reindex(row_timestamps)
-            
+            o_prices = z_raw['o'].reindex(row_timestamps)
+
             # 向量化计算未来时刻
-            future_timestamps = row_timestamps + prediction_horizon_td
+            future_prediction_timestamps = row_timestamps + prediction_horizon_td
             
             # 向量化获取未来时刻的价格（越界自动为nan）
-            t_future_prices = z_raw['c'].reindex(future_timestamps)
+            t_future_prices = z_raw['c'].reindex(future_prediction_timestamps)
             
             # 向量化计算收益率
             return_p = (t_future_prices.values / t_prices.values)
@@ -779,12 +791,11 @@ def data_prepare_coarse_grain_rolling(
             
             # 将标签添加到features_df
             features_df['t_price'] = t_prices.values
+            features_df['o_price'] = o_prices.values
             features_df['t_future_price'] = t_future_prices.values
             features_df['return_p'] = return_p
             features_df['return_f'] = return_f
-            features_df['future_timestamps'] = future_timestamps
-            
-            # 存储            
+            features_df['future_prediction_timestamps'] = future_prediction_timestamps
             features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
 
             coarse_features_dict[offset] = features_df
@@ -794,18 +805,10 @@ def data_prepare_coarse_grain_rolling(
         
         print(f"\n✓ 预计算完成: {num_offsets} 组粗粒度特征")
         print(f"优化策略: 每个时间点根据其offset选择对应组的预计算特征")
-    else:
-        print(f"\n使用原始方案（每个时间点独立计算）")
     
-    # ========== 第三步：生成细粒度滚动时间网格 ==========
-    print(f"\n生成细粒度滚动时间网格（步长={rolling_step}）...")
-    
-    # ========== 第六步：构建DataFrame并处理 ==========
-    print(f"\n合并样本数据...")
-    
+    # ========== 第三步：生成细粒度滚动时间网格 ==========    
     # 检查samples的类型，使用不同的合并策略
     if len(samples) > 0 and isinstance(samples[0], pd.DataFrame):
-        # 优化路径：samples是DataFrame列表（来自_process_timestamp_with_multi_offset_precompute_v2）
         # 使用pd.concat会比pd.DataFrame快很多
         print(f"  使用pd.concat合并{len(samples)}个DataFrame...")
         df_samples = pd.concat(samples, axis=0, ignore_index=False, copy=False)
@@ -822,8 +825,7 @@ def data_prepare_coarse_grain_rolling(
     
     print(f"样本时间范围: {df_samples.index.min()} 至 {df_samples.index.max()}")
     print(f"样本数量: {len(df_samples)}")
-    print(f"特征维度: {len([c for c in df_samples.columns if c not in ['t_price', 't_future_price', 'return_f']])}")
-    
+
     # 应用滚动标准化到标签
     def norm_ret(x, window=rolling_w):
         x = np.log1p(np.asarray(x))
@@ -833,10 +835,6 @@ def data_prepare_coarse_grain_rolling(
         factor_value = factors_data / factors_std
         factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
         return np.nan_to_num(factor_value).flatten()
-    
-    # 使用与 rolling_w 一致的 window，确保后续 inverse_norm 能正确匹配
-    # norm_window = rolling_w  # 使用配置的 rolling_w
-
     
     df_samples['ret_rolling_zscore'] = norm_ret(df_samples['return_f'].values, window=rolling_w)
     # df_samples['ret_rolling_zscore'] = norm(df_samples['return_f'].values, window=rolling_w, clip=6)
@@ -857,7 +855,6 @@ def data_prepare_coarse_grain_rolling(
         print(f"   数据行数: {original_len} → {len(df_samples)}")
         print(f"   新的时间范围: {df_samples.index.min()} 至 {df_samples.index.max()}")
 
-    print(f"\n标签统计:")
     print(f"return_f - 偏度: {df_samples['return_f'].skew():.4f}, 峰度: {df_samples['return_f'].kurtosis():.4f}")
     print(f"ret_rolling_zscore - 偏度: {df_samples['ret_rolling_zscore'].skew():.4f}, 峰度: {df_samples['ret_rolling_zscore'].kurtosis():.4f}")
     
@@ -870,7 +867,7 @@ def data_prepare_coarse_grain_rolling(
                 (df_samples.index <= pd.to_datetime(end_date_test))
     
     # 提取特征列
-    feature_cols = [c for c in df_samples.columns if c not in ['t_price', 't_future_price', 'return_f', 'ret_rolling_zscore', 'return_p', 'feature_offset', 'future_timestamps']]
+    feature_cols = [c for c in df_samples.columns if c not in ['t_price', 'o_price', 't_future_price', 'return_f', 'ret_rolling_zscore', 'return_p', 'feature_offset', 'future_prediction_timestamps']]
     
     X_all = df_samples[feature_cols].fillna(0)
     X_train = X_all[train_mask]
@@ -886,9 +883,9 @@ def data_prepare_coarse_grain_rolling(
 
     
     # 价格数据（用于回测）
-    open_train = df_samples.loc[train_mask, 't_price']
+    open_train = df_samples.loc[train_mask, 'o_price']
     close_train = df_samples.loc[train_mask, 't_price']  # 简化：开盘价=当前价
-    open_test = df_samples.loc[test_mask, 't_price']
+    open_test = df_samples.loc[test_mask, 'o_price']
     close_test = df_samples.loc[test_mask, 't_price']
     
     feature_names = feature_cols
