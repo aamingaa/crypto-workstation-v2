@@ -405,7 +405,7 @@ def removed_zero_vol_dataframe(df):
     return removed_zero_vol_df
 
 
-def resample(z: pd.DataFrame, freq: str) -> pd.DataFrame:
+def resample(z: pd.DataFrame, freq: str, closed: str = 'left', label: str = 'left') -> pd.DataFrame:
     '''
     这是不支持vwap的，默认读入的数据是没有turnover信息，自然也没有vwap的信息，不需要获取sym的乘数
     '''
@@ -415,7 +415,7 @@ def resample(z: pd.DataFrame, freq: str) -> pd.DataFrame:
     if freq != '1min' or freq != '1m':
         z.index = pd.to_datetime(z.index)
         # 注意closed和label参数
-        z = z.resample(freq, closed='left', label='left').agg({'o': 'first',
+        z = z.resample(freq, closed=closed, label=label).agg({'o': 'first',
                                                                'h': 'max',
                                                                'l': 'min',
                                                                'c': 'last',
@@ -812,6 +812,18 @@ def data_prepare_coarse_grain_rolling(
         # 使用pd.concat会比pd.DataFrame快很多
         print(f"  使用pd.concat合并{len(samples)}个DataFrame...")
         df_samples = pd.concat(samples, axis=0, ignore_index=False, copy=False)
+        
+        print(f"  合并后总行数: {len(df_samples)}")
+        
+        # 检查并处理重复的时间戳
+        if df_samples.index.duplicated().any():
+            num_duplicates = df_samples.index.duplicated().sum()
+            print(f"  ⚠️ 发现 {num_duplicates} 个重复时间戳")
+        
+            # 方案1：保留第一个（默认）
+            df_samples = df_samples[~df_samples.index.duplicated(keep='first')]
+            print(f"  ✓ 去重后保留 {len(df_samples)} 行（保留first）")
+        
         df_samples.sort_index(inplace=True)
         df_samples.dropna(inplace=True)
     else:
