@@ -412,7 +412,7 @@ def resample(z: pd.DataFrame, freq: str, closed: str = 'left', label: str = 'lef
     if freq == '15m':
         return z
     
-    if freq != '1min' or freq != '1m':
+    if freq not in ('1min', '1m'):
         z.index = pd.to_datetime(z.index)
         # 注意closed和label参数
         z = z.resample(freq, closed=closed, label=label).agg({'o': 'first',
@@ -630,6 +630,107 @@ def data_prepare(sym,
     return X_all, X_dataset_train, y_dataset_train,ret_dataset_train, X_dataset_test, y_dataset_test,ret_dataset_test, feature_names,open_train,open_test,close_train,close_test, z.index ,ohlcva_df
 
 
+def precompute_coarse_features_multi_phase(
+        z_raw: pd.DataFrame,
+        coarse_grain_period: str,
+        rolling_step: str,
+        prediction_horizon_td: pd.Timedelta,
+        rolling_w: int,
+        num_offsets: int,
+        include_categories: List[str] = None,
+    ) -> Tuple[Dict[pd.Timedelta, pd.DataFrame], List[pd.DataFrame]]:
+    """
+    方案三：复杂相位结构的粗粒度特征预计算。
+
+    核心思想：
+    - 只在原始时间坐标系上计算一次粗粒度 bar（closed='right', label='right'）
+    - 再构造细粒度决策时间网格（rolling_step）
+    - 对每个相位 phase_offset = i * rolling_step：
+        - 决策时刻 t_phase = fine_index + phase_offset
+        - 用 merge_asof 将 t_phase 对齐到「最近一个已完成的粗粒度 bar」
+        - 显式记录 phase_index / phase_offset_minutes，避免通过 index 偏移隐式编码相位
+    """
+    coarse_features_dict: Dict[pd.Timedelta, pd.DataFrame] = {}
+    samples: List[pd.DataFrame] = []
+
+    # 在原始坐标系上只计算一次粗粒度 bar 和特征（右闭区间，时间戳 = 区间右端点 = 结束时间）
+    coarse_bars_base = resample(z_raw.copy(), coarse_grain_period, closed='right', label='right')
+    coarse_bars_base = coarse_bars_base.sort_index()
+
+    # 为避免窗口过大，沿用原逻辑：rolling_zscore_window 按相位数缩放
+    rolling_zscore_window = max(int(rolling_w / max(num_offsets, 1)), 1)
+    base_feature = originalFeature.BaseFeature(
+        coarse_bars_base.copy(),
+        include_categories=include_categories,
+        rolling_zscore_window=rolling_zscore_window,
+    )
+    coarse_features_base = base_feature.init_feature_df
+    coarse_features_base = coarse_features_base.sort_index()
+
+    print(f"  [phase3] 基础粗粒度特征条数: {len(coarse_features_base)}")
+
+    # 构造细粒度时间网格（滚动步长）
+    fine_start = z_raw.index.min()
+    fine_end = z_raw.index.max()
+    fine_index = pd.date_range(start=fine_start, end=fine_end, freq=rolling_step)
+    print(f"  [phase3] 细粒度时间网格: {len(fine_index)} 个时间点（步长 {rolling_step}）")
+
+    for phase_idx in range(num_offsets):
+        phase_offset = phase_idx * pd.Timedelta(rolling_step)
+        print(f"\n  [phase3] 相位 {phase_idx}/{num_offsets-1}: 偏移 {phase_offset}")
+
+        # 决策时刻：细粒度时间网格 + 相位偏移
+        decision_times = fine_index + phase_offset
+        # 裁剪到原始数据时间范围内
+        decision_times = decision_times[
+            (decision_times >= fine_start) & (decision_times <= fine_end)
+        ]
+
+        if len(decision_times) == 0:
+            print(f"    ⚠️ 相位 {phase_idx} 在有效时间范围内没有决策点，跳过")
+            continue
+
+        phase_df = pd.DataFrame(index=pd.to_datetime(decision_times))
+        phase_df['phase_index'] = phase_idx
+        phase_df['phase_offset_minutes'] = phase_offset.total_seconds() / 60.0
+
+        # 将相位决策时间与粗粒度特征对齐：
+        # 每个决策时间 t，取 t 之前最后一个完成的粗粒度 bar（direction='backward'）
+        aligned = pd.merge_asof(
+            phase_df.sort_index(),
+            coarse_features_base.sort_index(),
+            left_index=True,
+            right_index=True,
+            direction='backward',
+        )
+
+        row_timestamps = aligned.index
+
+        # 为该相位计算当前价格与未来标签
+        t_prices = z_raw['c'].reindex(row_timestamps)
+        o_prices = z_raw['o'].reindex(row_timestamps)
+
+        future_prediction_timestamps = row_timestamps + prediction_horizon_td
+        t_future_prices = z_raw['c'].reindex(future_prediction_timestamps)
+
+        return_p = (t_future_prices.values / t_prices.values)
+        return_f = np.log(return_p)
+
+        aligned['t_price'] = t_prices.values
+        aligned['o_price'] = o_prices.values
+        aligned['t_future_price'] = t_future_prices.values
+        aligned['return_p'] = return_p
+        aligned['return_f'] = return_f
+        aligned['future_prediction_timestamps'] = future_prediction_timestamps
+
+        coarse_features_dict[phase_offset] = aligned
+        samples.append(aligned)
+
+        print(f"    ✓ 相位 {phase_idx} 完成: {len(aligned)} 个决策点, {len(aligned.columns)} 列")
+
+    print(f"\n  [phase3] 复杂相位结构预计算完成: {len(samples)} 组（相位）")
+    return coarse_features_dict, samples
+
 
 def data_prepare_coarse_grain_rolling(
         sym: str, 
@@ -705,106 +806,31 @@ def data_prepare_coarse_grain_rolling(
     print(f"读取原始数据: {len(z_raw)} 行，时间范围 {z_raw.index.min()} 至 {z_raw.index.max()}")
     
     # ========== 第二步：预计算粗粒度桶特征（可选优化） ==========
-    coarse_features_dict = {}  # 字典：{offset: features_df}
+    coarse_features_dict = {}  # 字典：{offset/phase_offset: features_df}
     
-     # 计算需要多少组不同偏移的resample
+    # 计算需要多少组不同相位
     coarse_period_minutes = pd.Timedelta(coarse_grain_period).total_seconds() / 60
     rolling_step_minutes = pd.Timedelta(rolling_step).total_seconds() / 60
     num_offsets = int(coarse_period_minutes / rolling_step_minutes)
     
     if use_fine_grain_precompute:
-        print(f"\n🚀 启用粗粒度预计算优化") 
+        print(f"\n🚀 启用粗粒度预计算优化（复杂相位结构，方案三）") 
         print(f"粗粒度周期: {coarse_grain_period} ({coarse_period_minutes}分钟)")
         print(f"滚动步长: {rolling_step} ({rolling_step_minutes}分钟)")
-        print(f"需要预计算 {num_offsets} 组不同偏移的粗粒度桶")
+        print(f"需要预计算 {num_offsets} 组不同相位的粗粒度特征")
         
         samples = []
         prediction_horizon_td = pd.Timedelta(rolling_step) * y_train_ret_period
-        
-        for i in range(num_offsets):
-            offset = pd.Timedelta(minutes=i * rolling_step_minutes)
-            print(f"\n组{i}: 偏移 {offset} ...")
-            
-            # 对数据进行偏移，然后resample
-            z_raw_offset = z_raw.copy()
-            z_raw_offset.index = z_raw_offset.index - offset
-            
-            # Resample（边界会自动对齐到0:00, 2:00, 4:00...）
-            # closed = 'right'
-            # 区间: (8:00, 10:00]
-            # 不包含: 8:00
-            # 包含: 8:15, 8:30, 8:45, ..., 10:00
 
-            # label='right'：使用区间右边界作为标签
-            # 区间 (8:00, 10:00] → 标签是 10:00
-            # 默认方式 (closed='left', label='left')：
-            #         时间轴:  8:00  8:15  8:30  ...  9:45  10:00
-            #      |<------- 特征窗口 ------->|
-            #      ^标签
-            #      |
-            # 在8:00时刻预测
-            # 但特征包含了8:15-9:45的未来数据！
-
-            # 修复方式 (closed='right', label='right')：
-            # 时间轴:  8:00  8:15  8:30  ...  9:45  10:00
-            #           |<------- 特征窗口 ------->|
-            #                                       ^标签
-            #                                       |
-            #                                在10:00时刻预测
-            #                                特征只包含历史数据✓
-                    # 在偏移坐标系：标签10:00，区间(8:00, 10:00]
-                    # 包含偏移时间：8:15, 8:30, ..., 10:00
-                    # 对应原始时间：8:30, 8:45, ..., 10:15
-
-            coarse_bars = resample(z_raw_offset, coarse_grain_period, closed='right', label='right')
-            
-            # 恢复原始时间
-            coarse_bars.index = coarse_bars.index + offset
-            
-            # 🔧 修复：过滤掉超出原始数据范围的桶
-            original_start = z_raw.index.min()
-            original_end = z_raw.index.max()
-            coarse_bars = coarse_bars[
-                (coarse_bars.index >= original_start) & 
-                (coarse_bars.index <= original_end)
-            ]
-
-            # 计算特征
-            base_feature = originalFeature.BaseFeature(coarse_bars.copy(), include_categories = include_categories, rolling_zscore_window = int(rolling_w / num_offsets))
-            features_df = base_feature.init_feature_df
-
-            row_timestamps = features_df.index
-            
-            # 向量化获取当前时刻的价格
-            t_prices = z_raw['c'].reindex(row_timestamps)
-            o_prices = z_raw['o'].reindex(row_timestamps)
-
-            # 向量化计算未来时刻
-            future_prediction_timestamps = row_timestamps + prediction_horizon_td
-            
-            # 向量化获取未来时刻的价格（越界自动为nan）
-            t_future_prices = z_raw['c'].reindex(future_prediction_timestamps)
-            
-            # 向量化计算收益率
-            return_p = (t_future_prices.values / t_prices.values)
-            return_f = np.log(return_p)
-            
-            # 将标签添加到features_df
-            features_df['t_price'] = t_prices.values
-            features_df['o_price'] = o_prices.values
-            features_df['t_future_price'] = t_future_prices.values
-            features_df['return_p'] = return_p
-            features_df['return_f'] = return_f
-            features_df['future_prediction_timestamps'] = future_prediction_timestamps
-            features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
-
-            coarse_features_dict[offset] = features_df
-            samples.append(features_df)
-
-            print(f"  ✓ 组{i}完成: {len(features_df)} 个桶, {len(features_df.columns)} 个特征")
-        
-        print(f"\n✓ 预计算完成: {num_offsets} 组粗粒度特征")
-        print(f"优化策略: 每个时间点根据其offset选择对应组的预计算特征")
+        coarse_features_dict, samples = precompute_coarse_features_multi_phase(
+            z_raw=z_raw,
+            coarse_grain_period=coarse_grain_period,
+            rolling_step=rolling_step,
+            prediction_horizon_td=prediction_horizon_td,
+            rolling_w=rolling_w,
+            num_offsets=num_offsets,
+            include_categories=include_categories,
+        )
     
     # ========== 第三步：生成细粒度滚动时间网格 ==========    
     # 检查samples的类型，使用不同的合并策略
