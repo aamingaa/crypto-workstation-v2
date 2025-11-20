@@ -435,14 +435,76 @@ def resample(z: pd.DataFrame, freq: str, closed: str = 'left', label: str = 'lef
             #    'oi', 'oi_ccy', 'toptrader_count_lsr', 'toptrader_oi_lsr', 'count_lsr',
             #    'taker_vol_lsr'
                ]
-
+        
         # 重要，这个删掉0成交的操作，不能给5分钟以内的freq进行操作，因为这种情况还是挺容易出现没有成交的，这会改变本身的分布
         # 使用正则表达式提取开头的数值部分, 判断freq的周期
         match = re.match(r"(\d+)", freq)
         if match:
             int_freq = int(match.group(1))
-        if int_freq > 5:
-            z = removed_zero_vol_dataframe(z)
+            if int_freq > 5:
+                z = removed_zero_vol_dataframe(z)
+        
+        return z
+    
+    return z
+
+
+def resample_with_offset(z: pd.DataFrame, freq: str, offset: pd.Timedelta = None, 
+                        closed: str = 'left', label: str = 'left') -> pd.DataFrame:
+    '''
+    支持offset参数的resample函数 - 使用pandas原生offset参数，避免时间索引偏移的问题
+    
+    参数:
+        z: 输入的DataFrame，必须有DatetimeIndex
+        freq: 重采样频率，如 '1h', '2h', '30min'
+        offset: 偏移量（pd.Timedelta），用于调整分桶起点
+                例如：offset=pd.Timedelta(minutes=15) 会让1小时桶从 9:15, 10:15, 11:15... 开始
+        closed: 区间闭合方式，'left' 或 'right'
+        label: 标签位置，'left' 或 'right'
+    
+    返回:
+        重采样后的DataFrame
+    '''
+    if freq == '15m':
+        return z
+    
+    if freq != '1min' and freq != '1m':
+        z.index = pd.to_datetime(z.index)
+        
+        # 使用pandas原生的offset参数，而不是偏移索引
+        if offset is not None:
+            z_resampled = z.resample(
+                freq, 
+                closed=closed, 
+                label=label,
+                offset=offset  # 🔑 关键：使用pandas原生offset参数
+            ).agg({
+                'o': 'first',
+                'h': 'max',
+                'l': 'min',
+                'c': 'last',
+                'vol': 'sum',
+                'vol_ccy': 'sum',
+                'trades': 'sum',
+            })
+        else:
+            # 没有offset时，使用原有逻辑
+            z_resampled = z.resample(freq, closed=closed, label=label).agg({
+                'o': 'first',
+                'h': 'max',
+                'l': 'min',
+                'c': 'last',
+                'vol': 'sum',
+                'vol_ccy': 'sum',
+                'trades': 'sum',
+            })
+        
+        # 前向填充NaN值
+        z_resampled = z_resampled.fillna(method='ffill')
+        z_resampled.columns = ['o', 'h', 'l', 'c', 'vol', 'vol_ccy', 'trades']
+        
+        return z_resampled
+    
     return z
 
 
@@ -729,33 +791,6 @@ def data_prepare_coarse_grain_rolling(
             z_raw_offset = z_raw.copy()
             z_raw_offset.index = z_raw_offset.index - offset
             
-            # Resample（边界会自动对齐到0:00, 2:00, 4:00...）
-            # closed = 'right'
-            # 区间: (8:00, 10:00]
-            # 不包含: 8:00
-            # 包含: 8:15, 8:30, 8:45, ..., 10:00
-
-            # label='right'：使用区间右边界作为标签
-            # 区间 (8:00, 10:00] → 标签是 10:00
-            # 默认方式 (closed='left', label='left')：
-            #         时间轴:  8:00  8:15  8:30  ...  9:45  10:00
-            #      |<------- 特征窗口 ------->|
-            #      ^标签
-            #      |
-            # 在8:00时刻预测
-            # 但特征包含了8:15-9:45的未来数据！
-
-            # 修复方式 (closed='right', label='right')：
-            # 时间轴:  8:00  8:15  8:30  ...  9:45  10:00
-            #           |<------- 特征窗口 ------->|
-            #                                       ^标签
-            #                                       |
-            #                                在10:00时刻预测
-            #                                特征只包含历史数据✓
-                    # 在偏移坐标系：标签10:00，区间(8:00, 10:00]
-                    # 包含偏移时间：8:15, 8:30, ..., 10:00
-                    # 对应原始时间：8:30, 8:45, ..., 10:15
-
             coarse_bars = resample(z_raw_offset, coarse_grain_period, closed='right', label='right')
             
             # 恢复原始时间
@@ -928,6 +963,289 @@ def data_prepare_coarse_grain_rolling(
     
     print('检查x all是不是等于 x train和y train相加，再检查trian和test以及close和open的形状是否一致')
     # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
+    print(f'检查X_all的形状 {X_all.shape}')
+    print(f'检查x dataset train的形状 {X_train.shape}')
+    print(f'检查y dataset train的形状 {y_train.shape}')
+    print(f'检查x all是不是等于train和test相加 {len(X_all)},{len(X_test)+len(X_train)}')
+    print(f'检查open train的形状 {open_train.shape}')
+    print(f'检查close train的形状 {close_train.shape}')
+    print(f'检查x dataset test的形状 {X_test.shape}')
+    print(f'检查y dataset test的形状 {y_test.shape}')
+    print(f'检查open test的形状 {open_test.shape}')
+    print(f'检查close test的形状 {close_test.shape}')
+    print(f'检查ohlc_aligned的形状 {ohlc_aligned.shape}')
+    print(f'检查y_p_train_origin的形状 {y_p_train_origin.shape}')
+    print(f'检查y_p_test_origin的形状 {y_p_test_origin.shape}')
+
+    # 返回接口与 data_prepare 保持一致
+    return (X_all, X_train, y_train, ret_train, X_test, y_test, ret_test,
+            feature_names, open_train, open_test, close_train, close_test,
+            df_samples.index, ohlc_aligned, y_p_train_origin, y_p_test_origin)
+
+
+def data_prepare_coarse_grain_rolling_offset(
+        sym: str, 
+        freq: str,  # 预测周期，例如 '2h' 表示预测未来2小时收益
+        start_date_train: str, 
+        end_date_train: str,
+        start_date_test: str, 
+        end_date_test: str,
+        coarse_grain_period: str = '2h',  # 粗粒度特征桶周期
+        feature_lookback_bars: int = 8,    # 特征回溯桶数（8个2h = 16小时）
+        rolling_step: str = '15min',       # 滚动步长
+        y_train_ret_period: int = 8,       # 预测周期（以coarse_grain为单位，1表示1个2h）
+        rolling_w: int = 2000,
+        output_format: str = 'ndarry',
+        data_dir: str = '',
+        read_frequency: str = '',
+        timeframe: str = '',
+        file_path: Optional[str] = None,
+        use_parallel: bool = True,  # 是否使用并行处理
+        n_jobs: int = -1,  # 并行进程数，-1表示使用所有CPU核心
+        use_fine_grain_precompute: bool = True,  # 是否使用细粒度预计算优化
+        include_categories: List[str] = None,
+        remove_warmup_rows: bool = False  # 是否删除rolling窗口未满的前rolling_w-1行
+    ):
+    """
+    粗粒度特征 + 细粒度滚动的数据准备方法（使用offset参数版本）
+    
+    🔑 关键改进：
+    - 使用pandas原生的offset参数替代时间索引偏移
+    - 避免了时间索引偏移可能带来的边界问题
+    - 代码更简洁，逻辑更清晰
+    
+    核心思想：
+    - 特征使用粗粒度周期（如2小时）聚合，减少噪声
+    - 特征窗口使用固定时间长度（如8个2小时 = 16小时）
+    - 预测起点以细粒度步长滚动（如15分钟），产生高频样本
+    - **关键改进**：每个滚动时间点都独立计算其专属的滑动窗口特征，避免多个样本重复使用相同的粗粒度桶
+    - 预测目标是未来N个粗粒度周期的收益（如未来2小时）
+    
+    参数说明：
+    - sym: 交易对符号
+    - freq: 用于兼容，实际预测周期由 y_train_ret_period * coarse_grain_period 决定
+    - coarse_grain_period: 粗粒度特征桶周期，如 '2h', '1h', '30min'
+    - feature_lookback_bars: 特征回溯的粗粒度桶数量（如8表示8个2h桶）
+    - rolling_step: 滚动步长，如 '15min', '10min', '5min'
+    - y_train_ret_period: 预测周期数（以rolling_step为单位）
+    - remove_warmup_rows: 是否删除rolling窗口未满的前rolling_w-1行（默认False保留所有数据）
+    
+    示例场景（滑动窗口）：
+    - coarse_grain_period='2h', feature_lookback_bars=8, rolling_step='15min'
+    优势：
+    - 每个时间点的特征窗口都是独立的，避免了数据泄露和样本相关性问题
+    - 滚动步长可以任意设置，不受粗粒度周期限制
+    - 特征更加精细，更能反映实时市场状态
+    - 使用offset参数，避免时间偏移问题
+    
+    返回与 data_prepare 相同的接口
+    """
+    
+    print(f"\n{'='*60}")
+    print(f"粗粒度特征 + 细粒度滚动数据准备（offset参数版本）")
+    print(f"品种: {sym}")
+    print(f"粗粒度周期: {coarse_grain_period}")
+    print(f"特征窗口: {feature_lookback_bars} × {coarse_grain_period} = {feature_lookback_bars * pd.Timedelta(coarse_grain_period).total_seconds() / 3600:.1f}小时")
+    print(f"预测周期: {y_train_ret_period} × {rolling_step} = {y_train_ret_period * pd.Timedelta(rolling_step).total_seconds() / 3600:.1f}小时")
+    print(f"✨ 使用pandas原生offset参数，避免时间索引偏移问题")
+    print(f"{'='*60}\n")
+    
+    # ========== 第一步：读取原始数据（细粒度） ==========
+    z_raw = data_load_v2(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test,
+                         timeframe=timeframe, read_frequency=read_frequency, file_path=file_path)
+    z_raw.index = pd.to_datetime(z_raw.index)
+    
+    z_raw = z_raw[(z_raw.index >= pd.to_datetime(start_date_train)) 
+                  & (z_raw.index <= pd.to_datetime(end_date_test))]
+    
+    print(f"读取原始数据: {len(z_raw)} 行，时间范围 {z_raw.index.min()} 至 {z_raw.index.max()}")
+    
+    # ========== 第二步：使用offset参数预计算粗粒度桶特征 ==========
+    coarse_features_dict = {}
+    
+    # 计算需要多少组不同偏移的resample
+    coarse_period_minutes = pd.Timedelta(coarse_grain_period).total_seconds() / 60
+    rolling_step_minutes = pd.Timedelta(rolling_step).total_seconds() / 60
+    num_offsets = int(coarse_period_minutes / rolling_step_minutes)
+    
+    if use_fine_grain_precompute:
+        print(f"\n🚀 启用粗粒度预计算优化（使用offset参数）") 
+        print(f"粗粒度周期: {coarse_grain_period} ({coarse_period_minutes}分钟)")
+        print(f"滚动步长: {rolling_step} ({rolling_step_minutes}分钟)")
+        print(f"需要预计算 {num_offsets} 组不同偏移的粗粒度桶")
+        
+        samples = []
+        prediction_horizon_td = pd.Timedelta(rolling_step) * y_train_ret_period
+        
+        for i in range(num_offsets):
+            offset = pd.Timedelta(minutes=i * rolling_step_minutes)
+            print(f"\n组{i}: 偏移 {offset} ...")
+            
+            # 🔑 关键改进：使用offset参数替代时间索引偏移
+            coarse_bars = resample_with_offset(
+                z_raw.copy(), 
+                coarse_grain_period, 
+                offset=offset,  # 直接使用offset参数
+                closed='right', 
+                label='right'
+            )
+            
+            # 🔧 过滤掉超出原始数据范围的桶
+            original_start = z_raw.index.min()
+            original_end = z_raw.index.max()
+            coarse_bars = coarse_bars[
+                (coarse_bars.index >= original_start) & 
+                (coarse_bars.index <= original_end)
+            ]
+
+            # 计算特征
+            base_feature = originalFeature.BaseFeature(
+                coarse_bars.copy(), 
+                include_categories=include_categories, 
+                rolling_zscore_window=int(rolling_w / num_offsets)
+            )
+            features_df = base_feature.init_feature_df
+
+            row_timestamps = features_df.index
+            
+            # 向量化获取当前时刻的价格
+            t_prices = z_raw['c'].reindex(row_timestamps)
+            o_prices = z_raw['o'].reindex(row_timestamps)
+
+            # 向量化计算未来时刻
+            future_prediction_timestamps = row_timestamps + prediction_horizon_td
+            
+            # 向量化获取未来时刻的价格（越界自动为nan）
+            t_future_prices = z_raw['c'].reindex(future_prediction_timestamps)
+            
+            # 向量化计算收益率
+            return_p = (t_future_prices.values / t_prices.values)
+            return_f = np.log(return_p)
+            
+            # 将标签添加到features_df
+            features_df['t_price'] = t_prices.values
+            features_df['o_price'] = o_prices.values
+            features_df['t_future_price'] = t_future_prices.values
+            features_df['return_p'] = return_p
+            features_df['return_f'] = return_f
+            features_df['future_prediction_timestamps'] = future_prediction_timestamps
+            features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
+
+            coarse_features_dict[offset] = features_df
+            samples.append(features_df)
+
+            print(f"  ✓ 组{i}完成: {len(features_df)} 个桶, {len(features_df.columns)} 个特征")
+        
+        print(f"\n✓ 预计算完成: {num_offsets} 组粗粒度特征")
+        print(f"优化策略: 每个时间点根据其offset选择对应组的预计算特征")
+    
+    # ========== 第三步：生成细粒度滚动时间网格 ==========    
+    if len(samples) > 0 and isinstance(samples[0], pd.DataFrame):
+        print(f"  使用pd.concat合并{len(samples)}个DataFrame...")
+        df_samples = pd.concat(samples, axis=0, ignore_index=False, copy=False)
+        
+        print(f"  合并后总行数: {len(df_samples)}")
+        
+        # 检查并处理重复的时间戳
+        if df_samples.index.duplicated().any():
+            num_duplicates = df_samples.index.duplicated().sum()
+            print(f"  ⚠️ 发现 {num_duplicates} 个重复时间戳")
+            df_samples = df_samples[~df_samples.index.duplicated(keep='first')]
+            print(f"  ✓ 去重后保留 {len(df_samples)} 行（保留first）")
+        
+        df_samples.sort_index(inplace=True)
+        df_samples.dropna(inplace=True)
+    else:
+        print(f"  使用pd.DataFrame合并{len(samples)}个样本...")
+        df_samples = pd.DataFrame(samples)
+        df_samples.set_index('timestamp', inplace=True)
+        df_samples.sort_index(inplace=True)
+    
+    print(f"✓ 合并完成")
+    print(f"样本时间范围: {df_samples.index.min()} 至 {df_samples.index.max()}")
+    print(f"样本数量: {len(df_samples)}")
+
+    # 应用滚动标准化到标签
+    def norm_ret(x, window=rolling_w):
+        x = np.log1p(np.asarray(x))
+        factors_data = pd.DataFrame(x, columns=['factor'])
+        factors_data = factors_data.replace([np.inf, -np.inf, np.nan], 0.0)
+        factors_std = factors_data.rolling(window=window, min_periods=1).std()
+        factor_value = factors_data / factors_std
+        factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
+        return np.nan_to_num(factor_value).flatten()
+    
+    df_samples['ret_rolling_zscore'] = norm_ret(df_samples['return_f'].values, window=rolling_w)
+    remove_warmup_rows = True
+            
+    # ========== 删除rolling窗口未满的行（可选） ==========
+    if remove_warmup_rows and len(df_samples) > rolling_w:
+        print(f"\n⚠️  删除前 {rolling_w-1} 行（rolling窗口预热期）")
+        original_len = len(df_samples)
+        df_samples = df_samples.iloc[rolling_w:]
+        print(f"   数据行数: {original_len} → {len(df_samples)}")
+        print(f"   新的时间范围: {df_samples.index.min()} 至 {df_samples.index.max()}")
+
+    print(f"return_f - 偏度: {df_samples['return_f'].skew():.4f}, 峰度: {df_samples['return_f'].kurtosis():.4f}")
+    print(f"ret_rolling_zscore - 偏度: {df_samples['ret_rolling_zscore'].skew():.4f}, 峰度: {df_samples['ret_rolling_zscore'].kurtosis():.4f}")
+    
+    # ========== 分割训练集和测试集 ==========
+    effective_end_train = pd.to_datetime(end_date_train) - 2 * prediction_horizon_td
+    train_mask = (df_samples.index >= pd.to_datetime(start_date_train)) & \
+                 (df_samples.index < pd.to_datetime(effective_end_train))
+    
+    test_mask = (df_samples.index >= pd.to_datetime(start_date_test)) & \
+                (df_samples.index <= pd.to_datetime(end_date_test))
+    
+    # 提取特征列
+    exclude_cols = ['t_price', 'o_price', 't_future_price', 'return_p', 'return_f', 
+                   'future_prediction_timestamps', 'ret_rolling_zscore', 'feature_offset']
+    feature_cols = [col for col in df_samples.columns if col not in exclude_cols]
+    
+    X_all = df_samples[feature_cols]
+    X_train = df_samples.loc[train_mask, feature_cols]
+    X_test = df_samples.loc[test_mask, feature_cols]
+    
+    y_train = df_samples.loc[train_mask, 'ret_rolling_zscore']
+    y_test = df_samples.loc[test_mask, 'ret_rolling_zscore']
+    
+    ret_train = df_samples.loc[train_mask, 'return_f']
+    ret_test = df_samples.loc[test_mask, 'return_f']
+    
+    y_p_train_origin = df_samples.loc[train_mask, 'return_p']
+    y_p_test_origin = df_samples.loc[test_mask, 'return_p']
+    
+    open_train = df_samples.loc[train_mask, 'o_price']
+    close_train = df_samples.loc[train_mask, 't_price']
+    open_test = df_samples.loc[test_mask, 'o_price']
+    close_test = df_samples.loc[test_mask, 't_price']
+    
+    feature_names = feature_cols
+    
+    # 格式转换
+    if output_format == 'ndarry':
+        X_all = X_all.values
+        X_train = X_train.values
+        X_test = X_test.values
+    elif output_format == 'dataframe':
+        pass
+    else:
+        raise ValueError(f"output_format 应为 'ndarry' 或 'dataframe'，当前为 {output_format}")
+    
+    print(f"\n{'='*60}")
+    print(f"数据分割完成:")
+    print(f"  训练集: {len(X_train)} 样本")
+    print(f"  测试集: {len(X_test)} 样本")
+    print(f"  特征数: {len(feature_names)}")
+    print(f"{'='*60}\n")
+    
+    # 构建 ohlc DataFrame
+    ohlc_aligned = pd.DataFrame({
+        'c': df_samples['t_price'],
+        'close': df_samples['t_price']
+    }, index=df_samples.index)
+    
+    print('检查x all是不是等于 x train和y train相加，再检查trian和test以及close和open的形状是否一致')
     print(f'检查X_all的形状 {X_all.shape}')
     print(f'检查x dataset train的形状 {X_train.shape}')
     print(f'检查y dataset train的形状 {y_train.shape}')
