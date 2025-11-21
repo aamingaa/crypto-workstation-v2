@@ -1093,11 +1093,28 @@ def data_prepare_coarse_grain_rolling_offset(
             # 🔧 过滤掉超出原始数据范围的桶
             original_start = z_raw.index.min()
             original_end = z_raw.index.max()
-            coarse_bars = coarse_bars[
+            coarse_bars = coarse_bars [
                 (coarse_bars.index >= original_start) & 
                 (coarse_bars.index <= original_end)
             ]
 
+            # 时刻轴：
+            # |---------|---------|---------|---------|
+            # 08:00    10:00    12:00    14:00    16:00
+
+            # row_timestamps = 10:00
+            #   ├─ 特征桶: [10:00, 12:00)
+            #   ├─ 特征数据来源: 08:00-12:00（包含历史窗口）
+            #   └─ 归一化窗口: [10:00 - rolling_w ... 10:00]
+
+            # decision_timestamps = 12:00
+            #   ├─ 开仓价: 12:00的价格
+            #   └─ 此时特征桶的数据已经完整
+
+            # future_prediction_timestamps = 14:00
+            #   └─ 平仓价: 14:00的价格
+
+            # 收益率 = (14:00价格 / 12:00价格) - 1
             # 计算特征
             base_feature = originalFeature.BaseFeature(
                 coarse_bars.copy(), 
@@ -1107,29 +1124,34 @@ def data_prepare_coarse_grain_rolling_offset(
             features_df = base_feature.init_feature_df
 
             row_timestamps = features_df.index
+            decision_timestamps = row_timestamps + pd.to_timedelta(prediction_horizon_td)
             
             # 向量化获取当前时刻的价格
-            t_prices = z_raw['c'].reindex(row_timestamps)
-            o_prices = z_raw['o'].reindex(row_timestamps)
+            t_prices = z_raw['c'].reindex(decision_timestamps)
+            o_prices = z_raw['o'].reindex(decision_timestamps)
 
             # 向量化计算未来时刻
-            future_prediction_timestamps = row_timestamps + prediction_horizon_td
+            prediction_timestamps = decision_timestamps + prediction_horizon_td
             
             # 向量化获取未来时刻的价格（越界自动为nan）
-            t_future_prices = z_raw['c'].reindex(future_prediction_timestamps)
+            t_future_prices = z_raw['c'].reindex(prediction_timestamps)
             
             # 向量化计算收益率
             return_p = (t_future_prices.values / t_prices.values)
             return_f = np.log(return_p)
             
             # 将标签添加到features_df
+            features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
+            features_df['decision_timestamps'] = decision_timestamps
+            features_df['prediction_timestamps'] = prediction_timestamps
             features_df['t_price'] = t_prices.values
             features_df['o_price'] = o_prices.values
             features_df['t_future_price'] = t_future_prices.values
             features_df['return_p'] = return_p
             features_df['return_f'] = return_f
-            features_df['future_prediction_timestamps'] = future_prediction_timestamps
-            features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
+
+            if i == 2 or i == 6:
+                print(f"组{i}的特征: {features_df.head()}")
 
             coarse_features_dict[offset] = features_df
             samples.append(features_df)

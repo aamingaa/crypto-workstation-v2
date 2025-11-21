@@ -5,10 +5,10 @@ freq: 15m    # 指定数据频率（用于读取原始数据）
 
 sym: ETHUSDT    # 指定gplearn做训练的品种数据
 y_train_ret_period: 8    # 预测未来1个粗粒度周期的收益（1×2h=2小时）
-start_date_train: '2024-01-01'
-end_date_train: '2025-01-01'
-start_date_test: '2025-01-01'
-end_date_test: '2025-06-10'
+start_date_train: '2025-01-01'
+end_date_train: '2025-02-01'
+start_date_test: '2025-02-01'
+end_date_test: '2025-03-01'
 timeframe: '15m'
 # data_dir: '/Volumes/Ext-Disk/data/futures/um/monthly/klines/ETHUSDT/15m'
 data_dir: '/Users/aming/data/ETHUSDT/15m'
