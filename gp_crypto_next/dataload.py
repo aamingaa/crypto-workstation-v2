@@ -791,7 +791,7 @@ def data_prepare_coarse_grain_rolling(
             z_raw_offset = z_raw.copy()
             z_raw_offset.index = z_raw_offset.index - offset
             
-            coarse_bars = resample(z_raw_offset, coarse_grain_period, closed='right', label='right')
+            coarse_bars = resample(z_raw_offset, coarse_grain_period, closed='left', label='left')
             
             # 恢复原始时间
             coarse_bars.index = coarse_bars.index + offset
@@ -1086,8 +1086,8 @@ def data_prepare_coarse_grain_rolling_offset(
                 z_raw.copy(), 
                 coarse_grain_period, 
                 offset=offset,  # 直接使用offset参数
-                closed='right', 
-                label='right'
+                closed='left', 
+                label='left'
             )
             
             # 🔧 过滤掉超出原始数据范围的桶

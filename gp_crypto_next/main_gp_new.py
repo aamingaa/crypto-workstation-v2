@@ -83,6 +83,10 @@ class GPAnalyzer:
         self.freq = self.config.get('freq', '')
         self.y_train_ret_period = self.config.get('y_train_ret_period', 1)
         self.sym = self.config.get('sym', '')
+        self.coarse_grain_period = self.config.get('coarse_grain_period', '2h')
+        self.feature_lookback_bars = self.config.get('feature_lookback_bars', 8)
+        self.rolling_step = self.config.get('rolling_step', '15min')
+        self.include_categories = self.config.get('include_categories', None)
         self.start_date_train = self.config.get('start_date_train', '')
         self.end_date_train = self.config.get('end_date_train', '')
         self.start_date_test = self.config.get('start_date_test', '')
@@ -91,13 +95,53 @@ class GPAnalyzer:
         self.metric = self.gp_settings.get('metric', 'pearson')
         self.verbose_logging = self.config.get('verbose_logging', False)
         self.rolling_window = self.config.get('rolling_window', 2000)
+        self.inverse_rolling_window = self.config.get('inverse_rolling_window', 200)
         self.annual_bars = calculate_annual_bars(self.freq)
+        self.data_dir = self.config.get('data_dir', '')
+        
+        # 文件路径配置（用于直接指定数据文件）
+        self.file_path = self.config.get('file_path', None)  # tick交易数据文件路径
+        self.kline_file_path = self.config.get('kline_file_path', None)  # K线数据文件路径（备用）
+        
+        # 数据源开关：kline（默认）或 micro（微结构版）
+        self.data_source = self.config.get('data_source', 'kline')
+        # 微结构特征控制
+        self.use_feature_extractors = self.config.get('use_feature_extractors', False)
+        self.trades_dir = self.config.get('trades_dir', '')
+        self.bar_builder = self.config.get('bar_builder', 'time')
+        self.dollar_threshold = self.config.get('dollar_threshold', 1e6)
+        self.active_family = self.config.get('active_family', '')
+        self.feature_family_include = self.config.get('feature_family_include', [])
+        self.feature_family_exclude = self.config.get('feature_family_exclude', [])
         
 
         # 自动加载其他配置项
         for key, value in self.config.items():
             if not hasattr(self, key):
                 setattr(self, key, value)
+    
+    # def load_config_attributes(self):
+    #     """
+    #     从配置字典中加载属性到类实例。
+    #     """
+    #     self.freq = self.config.get('freq', '')
+    #     self.y_train_ret_period = self.config.get('y_train_ret_period', 1)
+    #     self.sym = self.config.get('sym', '')
+    #     self.start_date_train = self.config.get('start_date_train', '')
+    #     self.end_date_train = self.config.get('end_date_train', '')
+    #     self.start_date_test = self.config.get('start_date_test', '')
+    #     self.end_date_test = self.config.get('end_date_test', '')
+    #     self.gp_settings = self.config.get('gp_settings', {})
+    #     self.metric = self.gp_settings.get('metric', 'pearson')
+    #     self.verbose_logging = self.config.get('verbose_logging', False)
+    #     self.rolling_window = self.config.get('rolling_window', 2000)
+    #     self.annual_bars = calculate_annual_bars(self.freq)
+        
+
+    #     # 自动加载其他配置项
+    #     for key, value in self.config.items():
+    #         if not hasattr(self, key):
+    #             setattr(self, key, value)
 
     def initialize_his_data(self):
         """
@@ -106,7 +150,7 @@ class GPAnalyzer:
         """
         if not self.data_initialized:
             if str(self.data_source).lower() == 'coarse_grain':
-                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling(
+                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling_offset(
                     self.sym, self.freq, self.start_date_train, self.end_date_train,
                     self.start_date_test, self.end_date_test, 
                     coarse_grain_period=getattr(self, 'coarse_grain_period', '2h'),

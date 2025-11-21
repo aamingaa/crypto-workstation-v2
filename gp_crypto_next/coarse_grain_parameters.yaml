@@ -17,7 +17,7 @@ read_frequency: 'monthly'
 
 # ===== 粗粒度特征 + 细粒度滚动配置 =====
 # data_source: coarse_grain  # 使用粗粒度特征方法
-data_source: kline_rolling
+data_source: coarse_grain
 
 # 粗粒度特征桶周期（2小时为基本单位）
 coarse_grain_period: '2h'

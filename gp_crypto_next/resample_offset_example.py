@@ -29,28 +29,28 @@ print("\n原始数据（15分钟）:")
 print(df.index)
 
 # 方法1: 默认resample（整点对齐）
-result_default = df.resample('1H', closed='right', label='right').agg({
+result_default = df.resample('1H', closed='left', label='left').agg({
     'o': 'first', 'h': 'max', 'l': 'min', 'c': 'last',
     'vol': 'sum', 'vol_ccy': 'sum', 'trades': 'sum'
 })
 print("\n默认resample（对齐到整点）:")
 print(result_default.index)
-# 输出: [10:00, 11:00, 12:00] - 对齐到整点
+# 输出: [09:00, 10:00, 11:00] - 对齐到整点
 
 # 方法2: 使用offset参数（推荐✨）
-result_offset = df.resample('1H', closed='right', label='right', 
+result_offset = df.resample('1H', closed='left', label='left', 
                             offset=pd.Timedelta(minutes=15)).agg({
     'o': 'first', 'h': 'max', 'l': 'min', 'c': 'last',
     'vol': 'sum', 'vol_ccy': 'sum', 'trades': 'sum'
 })
 print("\n使用offset参数（对齐到9:15）:")
 print(result_offset.index)
-# 输出: [10:15, 11:15, 12:15] - 对齐到:15分
+# 输出: [09:15, 10:15, 11:15] - 对齐到:15分
 
 # 方法3: 时间偏移（不推荐❌，容易出错）
 df_shifted = df.copy()
 df_shifted.index = df_shifted.index - pd.Timedelta(minutes=15)
-result_shifted = df_shifted.resample('1H', closed='right', label='right').agg({
+result_shifted = df_shifted.resample('1H', closed='left', label='left').agg({
     'o': 'first', 'h': 'max', 'l': 'min', 'c': 'last',
     'vol': 'sum', 'vol_ccy': 'sum', 'trades': 'sum'
 })
