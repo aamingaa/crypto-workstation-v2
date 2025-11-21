@@ -1150,8 +1150,8 @@ def data_prepare_coarse_grain_rolling_offset(
             features_df['return_p'] = return_p
             features_df['return_f'] = return_f
 
-            if i == 2 or i == 6:
-                print(f"组{i}的特征: {features_df.head()}")
+            # if i == 2 or i == 6:
+            #     print(f"组{i}的特征: {features_df.head()}")
 
             coarse_features_dict[offset] = features_df
             samples.append(features_df)
