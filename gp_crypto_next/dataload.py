@@ -1004,7 +1004,7 @@ def data_prepare_coarse_grain_rolling_offset(
         n_jobs: int = -1,  # 并行进程数，-1表示使用所有CPU核心
         use_fine_grain_precompute: bool = True,  # 是否使用细粒度预计算优化
         include_categories: List[str] = None,
-        remove_warmup_rows: bool = False  # 是否删除rolling窗口未满的前rolling_w-1行
+        remove_warmup_rows: bool = True  # 是否删除rolling窗口未满的前rolling_w-1行
     ):
     """
     粗粒度特征 + 细粒度滚动的数据准备方法（使用offset参数版本）
@@ -1221,7 +1221,7 @@ def data_prepare_coarse_grain_rolling_offset(
     
     # 提取特征列
     exclude_cols = ['t_price', 'o_price', 't_future_price', 'return_p', 'return_f', 
-                   'future_prediction_timestamps', 'ret_rolling_zscore', 'feature_offset']
+                   'prediction_timestamps', 'ret_rolling_zscore', 'feature_offset', 'decision_timestamps']
     feature_cols = [col for col in df_samples.columns if col not in exclude_cols]
     
     X_all = df_samples[feature_cols]

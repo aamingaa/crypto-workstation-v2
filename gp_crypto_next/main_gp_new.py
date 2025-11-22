@@ -179,10 +179,12 @@ class GPAnalyzer:
                     )
                 
             self.data_initialized = True
-            self.test_index = self.z_index[(self.z_index >= pd.to_datetime(self.start_date_test)) & (
-                        self.z_index <= pd.to_datetime(self.end_date_test))]
-            self.train_index = self.z_index[(self.z_index >= pd.to_datetime(self.start_date_train)) & (
-                        self.z_index < pd.to_datetime(self.end_date_train))]           
+            # self.test_index = self.z_index[(self.z_index >= pd.to_datetime(self.start_date_test)) & (
+            #             self.z_index <= pd.to_datetime(self.end_date_test))]
+            # self.train_index = self.z_index[(self.z_index >= pd.to_datetime(self.start_date_train)) & (
+            #             self.z_index < pd.to_datetime(self.end_date_train))]      
+            self.train_index = self.close_train.index if hasattr(self.close_train, 'index') else self.z_index[:len(self.close_train)]
+            self.test_index = self.close_test.index if hasattr(self.close_test, 'index') else self.z_index[-len(self.close_test):]                
         else:
             print("Shared data already initialized. Skipping data loading.")
 
@@ -319,7 +321,7 @@ class GPAnalyzer:
         result = evaluator.evaluate(factor_expression)  # 解析因子
         result = np.nan_to_num(result)
         # 训练集和测试集拆分
-        result_train, result_test = result[:len(self.y_train)], result[len(self.y_train):]
+        result_train, result_test = result[:len(self.y_train)],  result[-len(self.y_test):]
         if metric in norm_y_list :
             fitness_train = fitness._fitness_map[metric](self.y_train, pd.Series(result_train), np.ones(len(self.y_train)))
             fitness_test = fitness._fitness_map[metric](self.y_test, pd.Series(result_test), np.ones(len(self.y_test)))
@@ -341,7 +343,8 @@ class GPAnalyzer:
         result = evaluator.evaluate(factor_expression)  # 解析因子
         result = np.nan_to_num(result)
         # 训练集和测试集拆分
-        result_train, result_test = result[:len(self.y_train)], result[len(self.y_train):]
+        # result_train, result_test = result[:len(self.y_train)], result[len(self.y_train):]
+        result_train, result_test = result[:len(self.y_train)],  result[-len(self.y_test):]
 
         max_ic_train, up_r, dn_r = fitness._fitness_map['max_ic_train'](self.y_train, pd.Series(result_train), np.ones(len(self.y_train)))
         given_ic_test  = fitness._fitness_map['given_ic_test'](self.y_test, pd.Series(result_test), np.ones(len(self.y_test)), up_r, dn_r)
@@ -448,6 +451,8 @@ class GPAnalyzer:
             print("Task completed successfully.")
         except Exception as e:
             print(f"An error occurred: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
 
     def run(self):
@@ -516,7 +521,8 @@ class GPAnalyzer:
         读取之前生成的因子值，并计算每一个因子值的metric
         注意这里计算的metric都是返回一个值的'''
 
-        z = pd.read_csv('/home/etern/crypto/gp-crypto/elite_pool/factor_selected.csv')
+        # z = pd.read_csv('/home/etern/crypto/gp-crypto/elite_pool/factor_selected.csv')
+        z = pd.read_csv('/Users/aming/project/python/crypto-workstation-v2/gp_models/ETHUSDT_15m_8_2024-01-01_2025-01-01_2025-01-01_2025-04-01.csv')
         z.drop_duplicates(inplace=True)
         
         all_metrics = list(fitness._fitness_map.keys())
@@ -631,6 +637,7 @@ class GPAnalyzer:
         plt.xlabel('Value')
         plt.ylabel('Frequency')
         file_path = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/factor_drawings/fcthist_{index}.png"
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plt.savefig(file_path)
         plt.close()
         print(f"-------------------因子{index}的分布图已保存成功！！！-----------------------")
@@ -654,7 +661,7 @@ class GPAnalyzer:
         plt.close()
         
         # 训练集和测试集拆分
-        result_train, result_test = factor_series[:len(self.y_train)], factor_series[len(self.y_train):]
+        result_train, result_test = factor_series[:len(self.y_train)], factor_series[-len(self.y_test):]
         fitness_train = fitness._backtest_map[metric](self.ret_train, pd.Series(result_train), np.ones(len(self.y_train)))
         fitness_test = fitness._backtest_map[metric](self.ret_test, pd.Series(result_test), np.ones(len(self.y_test)))
 
@@ -679,8 +686,8 @@ class GPAnalyzer:
             
         # 遍历elite pool
         for index,i in enumerate(elite_pool):
-            train_rs, test_rs = analyzer.backtest_single_factor(i,'rolling_sharp',index,df)
-            train_pnl,test_pnl = analyzer.backtest_single_factor(i,'pnl',index,df)
+            train_rs, test_rs = self.backtest_single_factor(i,'rolling_sharp',index,df)
+            train_pnl,test_pnl = self.backtest_single_factor(i,'pnl',index,df)
             # TODO：画图和统计值同时具备
             close_train = pd.Series(self.close_train.reset_index(drop=True))
             close_test = pd.Series(self.close_test.reset_index(drop=True))
@@ -701,7 +708,7 @@ class GPAnalyzer:
     def calculate_factors_values(self,factor_expression):
         evaluator = FeatureEvaluator(_function_map, self.feature_names, self.X_all)
         result = evaluator.evaluate(factor_expression)  # 解析因子
-        result_train, result_test = result[:len(self.y_train)], result[len(self.y_train):]
+        result_train, result_test = result[:len(self.y_train)], result[-len(self.y_test):]
         return result_train,result_test
 
     def go_model(self,exp_pool):
@@ -712,7 +719,8 @@ class GPAnalyzer:
             X_test.append(self.calculate_factors_values(i)[1])
         X_train,X_test = np.array(X_train).T,np.array(X_test).T,
         model = LinearRegression()
-        model.fit(X_train,self.ret_train.reshape(-1,1))
+        # model.fit(X_train,self.ret_train.values.reshape(-1,1))
+        model.fit(X_train,self.ret_train.values.reshape(-1,1))
         # 根据历史分位,并确定放大缩小倍数
         pos_train = model.predict(X_train).flatten()
         min_val = abs(np.percentile(pos_train, 99))
