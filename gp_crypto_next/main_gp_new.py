@@ -66,7 +66,8 @@ class GPAnalyzer:
         self.data_initialized = False
         self.base_model_directory = Path.cwd() / 'gp_models'
         self.initialize_his_data()
-        self.total_factor_file_name = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}.csv.gz"
+        self.total_factor_file_dir = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}"
+        self.total_factor_file_name = f"{self.total_factor_file_dir}.csv.gz"
         self.total_factor_file_path = self.base_model_directory / self.total_factor_file_name
 
     def load_yaml_config(self, file_path):
@@ -275,7 +276,7 @@ class GPAnalyzer:
         保存初步结果到文件。
         """
         current_time = datetime.now().strftime('%Y%m%d%H%M%S')
-        model_folder_name = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}_{self.metric}_{current_time}"
+        model_folder_name = f"{self.total_factor_file_dir}_{self.metric}_{current_time}"
         base_model_directory = Path.cwd() / 'gp_models'
         self.model_folder = base_model_directory / model_folder_name
         self.model_folder.mkdir(parents=True, exist_ok=True)
@@ -416,19 +417,42 @@ class GPAnalyzer:
     def save_final_results(self):
         """
         fct_generate的一部分
-        保存最终结果到总表中。
+        保存最终结果到总表中，增强错误处理和数据验证。
         """
-
+        import shutil
+        
+        # 合并数据
         if self.total_factor_file_path.exists():
-            total_factor_df = pd.read_csv(self.total_factor_file_path, compression='gzip')
-            total_factor_df = pd.concat([total_factor_df, self.best_programs_df_dedup], ignore_index=True).drop_duplicates(
-                subset=['expression'], keep='first')
+            try:
+                total_factor_df = pd.read_csv(self.total_factor_file_path, compression='gzip')
+                total_factor_df = pd.concat([total_factor_df, self.best_programs_df_dedup], ignore_index=True).drop_duplicates(
+                    subset=['expression'], keep='first')
+            except Exception as e:
+                print(f"⚠️ Warning: Could not read existing file ({e}), will create new file")
+                total_factor_df = self.best_programs_df_dedup
         else:
             total_factor_df = self.best_programs_df_dedup
-
-        total_factor_df.to_csv(self.total_factor_file_path, index=False, compression='gzip')
-        print(f"saved {self.total_factor_file_path}")
+        
+        # 数据清理：处理可能导致保存失败的问题值
+        print(f"Preparing to save {len(total_factor_df)} factors...")
+        # 确保所有字符串列不包含换行符
+        string_cols = total_factor_df.select_dtypes(include=['object']).columns
+        for col in string_cols:
+            total_factor_df[col] = total_factor_df[col].astype(str).str.replace('\n', ' ').str.replace('\r', ' ')
+        
+        # 安全保存流程
+        # 注意：不能用 with_suffix，因为它只替换最后一个后缀
+        # 正确做法是保持原文件名不变
+        total_factor_df.to_csv(
+            self.total_factor_file_path, 
+            index=False, 
+            compression='gzip'  # 使用简单的 'gzip' 字符串即可
+        )
+        
+        print(f"✅ Successfully saved:")
+        print(f"{self.total_factor_file_path}")
         print("Factor generation process completed.")
+           
 
     def fct_generate(self, random_state=None):
         """
@@ -481,10 +505,49 @@ class GPAnalyzer:
     
     def save_total_factor_df(self, total_factor_df):
         """
-        保存总因子数据框。
+        保存总因子数据框，带数据清理和验证。
         """
-        total_factor_df.to_csv(self.total_factor_file_path, index=False, compression='gzip')
-        print(f"Updated factor evaluations saved to {self.total_factor_file_path}")    
+        import shutil
+        
+        # 数据清理：处理可能导致保存失败的问题值
+        print(f"Cleaning data before save...")
+        
+        # 替换 inf 和 nan
+        numeric_cols = total_factor_df.select_dtypes(include=[np.number]).columns
+        for col in numeric_cols:
+            total_factor_df[col] = total_factor_df[col].fillna(0)
+            total_factor_df[col] = total_factor_df[col].replace([np.inf, -np.inf], [1e10, -1e10])
+        
+        # 清理字符串列
+        string_cols = total_factor_df.select_dtypes(include=['object']).columns
+        for col in string_cols:
+            total_factor_df[col] = total_factor_df[col].astype(str).str.replace('\n', ' ').str.replace('\r', ' ')
+        
+        # 安全保存
+        temp_path = self.total_factor_file_path.with_suffix('.csv.gz.tmp')
+        
+        try:
+            total_factor_df.to_csv(temp_path, index=False, compression={'method': 'gzip', 'compresslevel': 5})
+            
+            # 验证
+            pd.read_csv(temp_path, compression='gzip', nrows=5)
+            
+            # 替换
+            shutil.move(str(temp_path), str(self.total_factor_file_path))
+            
+            # 保存未压缩版本
+            uncompressed_path = str(self.total_factor_file_path).replace('.csv.gz', '.csv')
+            total_factor_df.to_csv(uncompressed_path, index=False)
+            
+            print(f"✅ Updated factor evaluations saved to:")
+            print(f"   {self.total_factor_file_path}")
+            print(f"   {uncompressed_path}")
+            
+        except Exception as e:
+            print(f"❌ Error saving: {e}")
+            if temp_path.exists():
+                temp_path.unlink()
+            raise    
     
     def evaluate_existing_factors(self):
         """
@@ -553,7 +616,7 @@ class GPAnalyzer:
     def read_and_pick(self):
         # 遍历因子的总表，注意是总表
         elite_pool = []
-        csv_path = f'gp_models/{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}.csv.gz'
+        csv_path =self.total_factor_file_path
         # 读取因子值
         z = pd.read_csv(csv_path)
 
@@ -620,7 +683,7 @@ class GPAnalyzer:
         # 生成文件名并保存
         current_date = datetime.now().strftime("%Y%m%d")
         print('保存收盘价、因子的rolling sharp和因子的pnl')
-        filename = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/factor_drawings/factor_{index}_.png"
+        filename = f"{self.total_factor_file_dir}/factor_drawings/factor_{index}_.png"
         plt.savefig(filename)
         # 关闭图像窗口
         plt.close(fig)
@@ -636,7 +699,7 @@ class GPAnalyzer:
         plt.title('Distribution of single factor')
         plt.xlabel('Value')
         plt.ylabel('Frequency')
-        file_path = f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/factor_drawings/fcthist_{index}.png"
+        file_path = f"{self.total_factor_file_dir}/factor_drawings/fcthist_{index}.png"
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         plt.savefig(file_path)
         plt.close()
@@ -657,7 +720,7 @@ class GPAnalyzer:
         plt.title(f"{factor_expression}")
         plt.xlabel("Lag (n)")
         plt.ylabel("ic")
-        plt.savefig(f"{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/factor_drawings/ic_deacy_{index}.png")  # 保存为 PNG 文件
+        plt.savefig(f"{self.total_factor_file_dir}/factor_drawings/ic_deacy_{index}.png")  # 保存为 PNG 文件
         plt.close()
         
         # 训练集和测试集拆分
@@ -699,7 +762,9 @@ class GPAnalyzer:
                 pass
         # 保存
         print('下面一步保存筛选出来的因子值')
-        z.to_csv(f'{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/factors_elite_{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv')
+        file_name = f'{self.total_factor_file_dir}/factors_elite_{datetime.now().strftime("%Y%m%d-%H%M%S")}.csv'
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
+        z.to_csv(f'{file_name}')
         print('---------------------此轮筛选出来的因子值已经保存成功！！----------------------------')
         return elite_pool
 
@@ -734,7 +799,7 @@ class GPAnalyzer:
         
         pos = pos_ * scale_n
         pos = pos.clip(-5,5)
-        model_file = f'{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/model.pkl'
+        model_file = f'{self.total_factor_file_dir}/model.pkl'
         with open(model_file, 'wb') as file:
             pickle.dump(model, file)
         print('模型文件保存成功！')
@@ -842,10 +907,10 @@ class GPAnalyzer:
         plt.grid(True)
         plt.tight_layout()
         dir_path = Path(
-            f'{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/real_trading')
+            f'{self.total_factor_file_dir}/real_trading')
         dir_path.mkdir(parents=True, exist_ok=True)
         # Save the plot
-        plt.savefig(f'{self.sym}_{self.freq}_{self.y_train_ret_period}_{self.start_date_train}_{self.end_date_train}_{self.start_date_test}_{self.end_date_test}/real_trading/net_value_performance.png')
+        plt.savefig(f'{self.total_factor_file_dir}/real_trading/net_value_performance.png')
     
     
 
