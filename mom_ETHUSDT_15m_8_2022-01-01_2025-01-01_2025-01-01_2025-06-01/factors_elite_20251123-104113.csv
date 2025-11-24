@@ -1,3 +1,0 @@
-,expression
-0,ts_wma_21(ts_delta_17(o_ta_lr_slope_10))
-1,"ta_beta_10(ts_delta_17(c_ta_tsf_5), ts_rank_5(TS_CORR_40(trades, v_trix_8_obv)))"
