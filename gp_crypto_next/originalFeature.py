@@ -275,6 +275,134 @@ def define_base_fields(rolling_zscore_window: int = 2000, include_categories: Li
             lambda corr: norm(np.nan_to_num(corr))
         )(pd.Series(pd.Series(data['c']).pct_change()).rolling(window=20, min_periods=10).corr(pd.Series(data['vol']))),
         'obv_lr_slope_20': lambda data: norm(np.nan_to_num(talib.LINEARREG_SLOPE(talib.OBV(data['c'], data['vol']), timeperiod=20))),
+
+        # =====================================================================
+        # 下面为新增因子：更结构化的趋势/动量 + 价量关系 + 冲击/流动性
+        # =====================================================================
+
+        # ---------------- 趋势 / 动量：多周期收益与趋势斜率 ----------------
+        # 多周期 log 收益（使用 pct_change 近似），均用 rolling_zscore_window 做标准化
+        'ret_1': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(1).values)),
+        'ret_4': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(4).values)),
+        'ret_12': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(12).values)),
+        'ret_24': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(24).values)),
+        'ret_48': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(48).values)),
+        'ret_96': lambda data: norm(np.nan_to_num(pd.Series(data['c']).pct_change(96).values)),
+
+        # 基于 log(close) 的趋势斜率（短/中周期）
+        'trend_slope_24': lambda data: norm(np.nan_to_num(
+            talib.LINEARREG_SLOPE(np.log(np.maximum(data['c'], 1e-12)), timeperiod=24)
+        )),
+        'trend_slope_72': lambda data: norm(np.nan_to_num(
+            talib.LINEARREG_SLOPE(np.log(np.maximum(data['c'], 1e-12)), timeperiod=72)
+        )),
+        'trend_slope_168': lambda data: norm(np.nan_to_num(
+            talib.LINEARREG_SLOPE(np.log(np.maximum(data['c'], 1e-12)), timeperiod=168)
+        )),
+
+        # 趋势一致性：过去 24 根上涨比例
+        'up_ratio_24': lambda data: norm(np.nan_to_num(
+            pd.Series(data['c']).pct_change().rolling(window=24, min_periods=12).apply(
+                lambda x: np.mean(x > 0)
+            ).values
+        )),
+
+        # 更长周期的 Donchian 通道位置（长期趋势/位置）
+        'donchian_pos_50': lambda data: (
+            lambda ll, hh: norm(_safe_div(data['c'] - ll, hh - ll + 1e-12))
+        )(pd.Series(data['l']).rolling(window=50, min_periods=10).min(),
+          pd.Series(data['h']).rolling(window=50, min_periods=10).max()),
+        'donchian_pos_200': lambda data: (
+            lambda ll, hh: norm(_safe_div(data['c'] - ll, hh - ll + 1e-12))
+        )(pd.Series(data['l']).rolling(window=200, min_periods=40).min(),
+          pd.Series(data['h']).rolling(window=200, min_periods=40).max()),
+
+        # ---------------- 价量关系：量能惊喜 & 成交结构 ----------------
+        # 量能水平（合约张数、计价货币）
+        'vol_level': lambda data: norm(np.nan_to_num(data.get('vol', 0.0))),
+        'vol_ccy_level': lambda data: norm(np.nan_to_num(data.get('vol_ccy', 0.0))),
+
+        # 平均单笔成交量及其标准化：大单主导 vs 零散成交
+        'avg_trade_size': lambda data: norm(np.nan_to_num(
+            _safe_div(data.get('vol', 0.0), np.maximum(data.get('trades', 0.0), 1.0))
+        )),
+
+        # 24 根内基于持仓的“换手率”近似：高换手≃筹码快速轮动
+        'turnover_oi_24': lambda data: norm(np.nan_to_num(_safe_div(
+            pd.Series(data.get('vol', 0.0)).rolling(window=24, min_periods=12).sum().values,
+            np.maximum(data.get('oi', 0.0), 1e-12)
+        ))),
+
+        # ---------------- 冲击 / 流动性：多窗口 Amihud + 方向性成交 ----------------
+        # 更短/更长窗口的 Amihud 式流动性指标
+        'amihud_illiq_5': lambda data: norm(np.nan_to_num(_safe_div(
+            np.abs(pd.Series(data['c']).pct_change().values),
+            pd.Series(data['vol']).rolling(window=5, min_periods=3).mean().replace(0, np.nan).values
+        ))),
+        'amihud_illiq_60': lambda data: norm(np.nan_to_num(_safe_div(
+            np.abs(pd.Series(data['c']).pct_change().values),
+            pd.Series(data['vol']).rolling(window=60, min_periods=30).mean().replace(0, np.nan).values
+        ))),
+
+        # 带符号的缺口强度（相对 ATR14）：顺势/逆势 gap
+        'gap_signed_14': lambda data: (
+            lambda atr14, cp: norm(_safe_div((data['o'] - cp), atr14 + 1e-12))
+        )(np.nan_to_num(talib.ATR(data['h'], data['l'], data['c'], timeperiod=14)),
+          pd.Series(data['c']).shift(1).values),
+
+        # 方向性主动成交不平衡（多空偏向），使用 taker_vol_lsr
+        'taker_imbalance': lambda data: norm(np.nan_to_num(data.get('taker_vol_lsr', 0.0))),
+
+        # =====================================================================
+        # 拥挤度 & 杠杆风险相关因子（仅使用当前已知字段：oi / toptrader_* / taker_vol_lsr）
+        # =====================================================================
+
+        # OI 在短期窗口（24 根）内的 z-score（杠杆热度）
+        'oi_zscore_24': lambda data: norm(np.nan_to_num(
+            _safe_div(
+                pd.Series(data.get('oi', 0.0)) - pd.Series(data.get('oi', 0.0)).rolling(window=24, min_periods=12).mean(),
+                pd.Series(data.get('oi', 0.0)).rolling(window=24, min_periods=12).std().replace(0, np.nan)
+            ).values
+        )),
+
+        # OI 24 根变化率（杠杆加速/减速）
+        'oi_change_24': lambda data: norm(np.nan_to_num(
+            _safe_div(
+                pd.Series(data.get('oi', 0.0)).diff(24).values,
+                pd.Series(data.get('oi', 0.0)).shift(24).replace(0, np.nan).values
+            )
+        )),
+
+        # 大户持仓多空偏向（long/short ratio），直接标准化
+        'toptrader_oi_skew': lambda data: norm(np.nan_to_num(data.get('toptrader_oi_lsr', 0.0))),
+        'toptrader_count_skew': lambda data: norm(np.nan_to_num(data.get('toptrader_count_lsr', 0.0))),
+        'toptrader_oi_skew_abs': lambda data: norm(np.nan_to_num(np.abs(data.get('toptrader_oi_lsr', 0.0)))),
+
+        # 结合方向性主动成交与量能：大幅方向性交易 + 放量
+        'taker_imbalance_vol': lambda data: norm(np.nan_to_num(
+            data.get('taker_vol_lsr', 0.0) * pd.Series(data.get('vol', 0.0)).rolling(window=24, min_periods=12).apply(
+                lambda x: (x - x.mean()) / (x.std() + 1e-12)
+            ).fillna(0.0).values
+        )),
+
+        # =====================================================================
+        # Regime / 市场状态相关因子
+        # =====================================================================
+
+        # 长周期方向 regime：基于 96 根收益的符号（约 4 天），-1/0/1
+        'regime_trend_96': lambda data: norm(np.nan_to_num(
+            np.sign(pd.Series(data['c']).pct_change(96).values)
+        )),
+
+        # 波动率 regime：过去 24 根的 realized vol 水平
+        'regime_vol_24': lambda data: norm(np.nan_to_num(
+            pd.Series(data['c']).pct_change().rolling(window=24, min_periods=12).std().values
+        )),
+
+        # 流动性 regime：过去 168 根（约一周）的成交量均值
+        'regime_liquidity_168': lambda data: norm(np.nan_to_num(
+            pd.Series(data.get('vol', 0.0)).rolling(window=168, min_periods=50).mean().values
+        )),
     }
 
     # 如果指定了类别，则按目录过滤需要返回的特征集合
@@ -394,6 +522,10 @@ def get_feature_catalog() -> dict:
         'momentum': [
             'ori_ta_macd', 'close_macd', 'c_ta_tsf_5', 'h_ta_lr_angle_10', 'o_ta_lr_slope_10',
             'v_trix_8_obv', 'ori_trix_8', 'ori_trix_21', 'ori_trix_55', 'obv_lr_slope_20',
+            'ret_1', 'ret_4', 'ret_12', 'ret_24', 'ret_48', 'ret_96',
+            'trend_slope_24', 'trend_slope_72', 'trend_slope_168',
+            'up_ratio_24',
+            'donchian_pos_50', 'donchian_pos_200',
         ],
         'volatility': [
             'h_ts_std_10', 'v_ts_std_20', 'v_ts_range_5', 'tr_index', 'atr_14', 'range_over_atr_14',
@@ -407,9 +539,20 @@ def get_feature_catalog() -> dict:
             'ori_ta_obv', 'obv_v', 'volume_macd', 'ret_vol_corr_20', 'v_power_a',
             'v_ts_sma_21', 'v_cci_25_obv', 'v_cci_25_sum', 'v_rsi_6_obv', 'v_rsi_6_sum',
             'v_rsi_12_obv', 'v_rsi_12_sum', 'v_rsi_24_obv', 'v_rsi_24_sum', 'mfi_index', 'mfi_30',
+            'vol_level', 'vol_ccy_level', 'avg_trade_size', 'turnover_oi_24',
         ],
         'impact': [
-            'gap_strength_14', 'amihud_illiq_20', 'ad_index', 'ad_real', 'lgp_shortcut_illiq_6',
+            'gap_strength_14', 'gap_signed_14',
+            'amihud_illiq_20', 'amihud_illiq_5', 'amihud_illiq_60',
+            'ad_index', 'ad_real', 'lgp_shortcut_illiq_6', 'taker_imbalance',
+            'taker_imbalance_vol',
+        ],
+        'crowding': [
+            'oi_zscore_24', 'oi_change_24',
+            'toptrader_oi_skew', 'toptrader_count_skew', 'toptrader_oi_skew_abs',
+        ],
+        'regime': [
+            'regime_trend_96', 'regime_vol_24', 'regime_liquidity_168',
         ],
         'structure': [
             'clv', 'body_ratio', 'upper_shadow_ratio', 'lower_shadow_ratio', 'donchian_pos_20',
