@@ -157,16 +157,14 @@
   * 哪类因子在那段权重大/IC 高；
   * 拥挤度/Regime 因子有没有提前给出风险信号。
 
+## 什么类别的因子适合gplearn挖掘？
 
-## 什么类别的因子适合挖掘
-
-
-* 是，你的理解基本对：用 gplearn 重点挖掘“量价/趋势类”alpha 因子的组合，而 冲击/流动性类、杠杆/拥挤度类、Regime 类更适合作为“风控 / 条件 / 调仓变量”，不太适合让 GP 随意做复杂组合。
+* 用 gplearn 重点挖掘“量价/趋势类”alpha 因子的组合，而 冲击/流动性类、杠杆/拥挤度类、Regime 类更适合作为“风控 / 条件 / 调仓变量”，不太适合让 GP 随意做复杂组合。
 * 这样做的好处是：alpha 部分让 GP 充分发挥; 风控&Regime 保持简单、单调、可解释，避免出现“高冲击、高拥挤时反而加仓”这类很难接受的黑箱逻辑。
 
 ---
 
-### 1. 为什么“量价类适合挖组合”，“冲击 / 杠杆类不太适合”？
+### 为什么“量价类适合挖组合”，“冲击 / 杠杆类不太适合”？
 
 1）量价 / 趋势类（momentum, volatility, volume_price, MA, bands...）
 
@@ -200,9 +198,6 @@
 * 若让 GP 随意组合：
 * 可能学出“拥挤度高但短期价格还在涨 → 继续放大仓位”这种黑箱逻辑，
 * 从 风控视角几乎不可接受。
-
-
-
 * 建议作为 GP 挖掘组合输入的类别（alpha 主体）：
 * momentum: ret_*, trend_slope_*, donchian_pos_*, 各类 MA/动量因子；
 * volatility: atr_*, bb_width_over_atr_*, var_* 等（趋势强度 vs 噪音）；
@@ -212,3 +207,9 @@
 * impact: amihud_illiq_*, gap_*, taker_imbalance_vol, lgp_shortcut_illiq_6 等；
 * crowding: oi_zscore_24, oi_change_24, toptrader_oi_skew(_abs), toptrader_count_skew 等；
 * regime: regime_trend_96, regime_vol_24, regime_liquidity_168。
+
+
+
+
+
+如何判断我的特征是能够赚钱的呢，或者赚钱能力的上限？以及是特征不够好还是预测模型不够好？
