@@ -148,6 +148,174 @@ import lightgbm as lgb
 import joblib
 import pickle
 
+
+# =========================
+# 模块拆分：Data / Alpha / RegimeRisk / Backtest
+# =========================
+
+class DataModule:
+    """
+    数据模块：负责调用 dataload 加载数据，并写回策略实例的相关属性。
+    """
+    def __init__(self, strategy: "QuantTradingStrategy"):
+        self.strategy = strategy
+
+    def load(self):
+        """
+        使用 dataload 模块加载数据（封装原 load_data_from_dataload 逻辑）
+        """
+        s = self.strategy
+        print("正在使用dataload模块加载数据...")
+        
+        # 从data_config中获取参数
+        sym = s.data_config['sym']
+        freq = s.data_config['freq']
+        start_date_train = s.data_config['start_date_train']
+        end_date_train = s.data_config['end_date_train']
+        start_date_test = s.data_config['start_date_test']
+        end_date_test = s.data_config['end_date_test']
+        rolling_w = s.data_config.get('rolling_window', 2000)
+        data_dir = s.data_config.get('data_dir', '')
+        read_frequency = s.data_config.get('read_frequency', 'monthly')
+        timeframe = s.data_config.get('timeframe', None)
+        
+        # 根据data_source选择不同的加载方式
+        data_source = s.data_config.get('data_source', 'kline')
+        
+        try:
+            if str(data_source).lower() == 'coarse_grain':
+                # 使用粗粒度特征加载
+                print(f"使用粗粒度特征方法 (coarse_grain)")
+                coarse_grain_period = s.data_config.get('coarse_grain_period', '2h')
+                feature_lookback_bars = s.data_config.get('feature_lookback_bars', 8)
+                rolling_step = s.data_config.get('rolling_step', '15min')
+                file_path = s.data_config.get('file_path', None)
+                
+                (s.X_all, s.X_train, s.y_train, s.ret_train,
+                 s.X_test, s.y_test, s.ret_test, s.feature_names,
+                 s.open_train, s.open_test, s.close_train, s.close_test,
+                 s.z_index, s.ohlc, s.y_p_train_origin, s.y_p_test_origin
+                 ) = dataload.data_prepare_coarse_grain_rolling(
+                    sym, freq, start_date_train, end_date_train,
+                    start_date_test, end_date_test,
+                    coarse_grain_period=coarse_grain_period,
+                    feature_lookback_bars=feature_lookback_bars,
+                    rolling_step=rolling_step,
+                    y_train_ret_period=s.config['return_period'],
+                    rolling_w=rolling_w,
+                    output_format='ndarry',
+                    data_dir=data_dir,
+                    read_frequency=read_frequency,
+                    timeframe=timeframe,
+                    file_path=file_path,
+                    include_categories=getattr(s, 'include_categories', ['momentum'])
+                )
+                
+            elif str(data_source).lower() == 'kline':
+                # 使用标准data_prepare
+                (s.X_all, X_train, s.y_train, s.ret_train,
+                 X_test, s.y_test, s.ret_test, s.feature_names,
+                 open_train, open_test, close_train, close_test,
+                 s.z_index, ohlc) = dataload.data_prepare(
+                    sym, freq, start_date_train, end_date_train,
+                    start_date_test, end_date_test,
+                    y_train_ret_period=s.config['return_period'],
+                    rolling_w=rolling_w,
+                    data_dir=data_dir,
+                    read_frequency=read_frequency,
+                    timeframe=timeframe
+                )
+                # 保存价格数据
+                s.open_train, s.open_test = open_train, open_test
+                s.close_train, s.close_test = close_train, close_test
+                s.ohlc = ohlc
+            else:
+                raise ValueError(f"不支持的data_source: {data_source}")
+                
+            print(f"数据加载完成")
+            print(f"X_all shape: {s.X_all.shape}")
+            print(f"特征数量: {len(s.feature_names)}")
+            print(f"训练集大小: {len(s.y_train)}")
+            print(f"测试集大小: {len(s.y_test)}")
+            
+            return s
+            
+        except Exception as e:
+            print(f"数据加载失败: {e}")
+            raise
+
+
+class AlphaModule:
+    """
+    Alpha 模块：负责因子评估、预处理、因子选择、训练集/测试集准备、模型训练与预测。
+    """
+    def __init__(self, strategy: "QuantTradingStrategy"):
+        self.strategy = strategy
+
+    def run_alpha_pipeline(self, normalize_method=None, enable_factor_selection=False,
+                           weight_method='equal', use_normalized_label=True):
+        """
+        运行 Alpha 层完整流程（不含 Regime & 风控缩放、回测）
+        """
+        s = self.strategy
+
+        # 评估 GP 因子表达式
+        pipeline = s.evaluate_factor_expressions()
+
+        # 可选：因子标准化（默认不标准化，与 gplearn 一致）
+        if normalize_method is not None:
+            print(f"⚠️  警告: 启用因子标准化可能导致效果与 gplearn 不一致！")
+            pipeline = pipeline.normalize_factors(method=normalize_method)
+        else:
+            print("ℹ️  不标准化因子（与 gplearn 一致）")
+
+        # 可选：因子筛选（基于相关性）
+        if enable_factor_selection:
+            pipeline = pipeline.select_factors()
+
+        # 准备训练数据 + 训练模型 + 生成预测
+        pipeline = (pipeline
+                    .prepare_training_data()
+                    .train_models(use_normalized_label=use_normalized_label)
+                    .make_predictions(weight_method=weight_method))
+
+        return pipeline
+
+
+class RegimeRiskModule:
+    """
+    Regime + 风控&拥挤度 模块：负责构造缩放因子并应用到模型仓位。
+    """
+    def __init__(self, strategy: "QuantTradingStrategy"):
+        self.strategy = strategy
+
+    def apply(self):
+        """
+        应用 Regime 层与 风控&拥挤度 层的缩放
+        """
+        self.strategy.apply_regime_and_risk_scaling()
+        return self.strategy
+
+    def plot_diagnostics(self, model_name: str = 'Ensemble'):
+        """
+        绘制 Regime / Risk 缩放因子与仓位、价格的对比诊断图
+        """
+        self.strategy.plot_regime_and_risk_scalers(model_name=model_name)
+        return self.strategy
+
+
+class BacktestModule:
+    """
+    回测与绩效分析模块：封装回测、汇总与可视化相关接口。
+    """
+    def __init__(self, strategy: "QuantTradingStrategy"):
+        self.strategy = strategy
+
+    def run_all_backtests(self):
+        """回测所有模型"""
+        return self.strategy.backtest_all_models()
+
+
 class QuantTradingStrategy:
     """
     多模型量化交易策略类（整合GP因子）
@@ -395,6 +563,12 @@ class QuantTradingStrategy:
         
         # 模式标记
         self._use_expressions_mode = False  # 是否使用表达式模式（而非CSV文件）
+
+        # 子模块（数据 / Alpha / Regime&Risk / 回测）
+        self.data_module = DataModule(self)
+        self.alpha_module = AlphaModule(self)
+        self.regime_risk_module = RegimeRiskModule(self)
+        self.backtest_module = BacktestModule(self)
         
         print(f"策略初始化完成")
     
@@ -414,6 +588,12 @@ class QuantTradingStrategy:
             # 三层结构相关开关（默认全部打开）
             'enable_regime_layer': True,  # 是否启用 Regime / 环境层缩放
             'enable_risk_layer': True,    # 是否启用 风控 & 拥挤度层缩放
+            # Regime / Risk 层使用的特征列（若为 None 或空，则回退到自动匹配）
+            'regime_trend_cols': None,    # 例如 ['regime_trend_96', 'trend_slope_96']
+            'regime_vol_cols': None,      # 例如 ['regime_vol_24']
+            'risk_crowding_cols': None,   # 例如 ['oi_zscore_24', 'toptrader_oi_skew_abs']
+            'risk_impact_cols': None,     # 例如 ['amihud_illiq_20', 'gap_strength_14']
+            'risk_funding_cols': None,    # 例如 ['funding_zscore_24h']
         }
     
     def load_data_from_dataload(self):
@@ -444,25 +624,6 @@ class QuantTradingStrategy:
                 rolling_step = self.data_config.get('rolling_step', '15min')
                 file_path = self.data_config.get('file_path', None)
                 
-                # (self.X_all, X_train, self.y_train, self.ret_train, 
-                #  X_test, self.y_test, self.ret_test, self.feature_names,
-                #  open_train, open_test, close_train, close_test, 
-                #  self.z_index, ohlc, self.y_p_train_origin,
-                #  self.y_p_test_origin
-                #  ) = dataload.data_prepare_coarse_grain_rolling(
-                #     sym, freq, start_date_train, end_date_train,
-                #     start_date_test, end_date_test,
-                #     coarse_grain_period=coarse_grain_period,
-                #     feature_lookback_bars=feature_lookback_bars,
-                #     rolling_step=rolling_step,
-                #     y_train_ret_period=self.config['return_period'],
-                #     rolling_w=rolling_w,
-                #     output_format='ndarry',
-                #     data_dir=data_dir,
-                #     read_frequency=read_frequency,
-                #     timeframe=timeframe,
-                #     file_path=file_path
-                # )
                 self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
@@ -1210,12 +1371,15 @@ class QuantTradingStrategy:
         df = self._ensure_feature_df()
         n = len(df)
         
-        # 1）趋势因子：优先找 regime_trend_*，否则退化到 trend_slope_96 / trend_slope_72
-        trend_cols = [c for c in df.columns if 'regime_trend' in c.lower()]
-        
-        if not trend_cols:
-            trend_cols = [c for c in df.columns 
-                          if 'trend_slope_96' in c.lower() or 'trend_slope_72' in c.lower()]
+        # 1）趋势因子：优先使用配置的列名；若未配置，则回退到名称匹配
+        cfg_trend_cols = self.config.get('regime_trend_cols')
+        if cfg_trend_cols:
+            trend_cols = [c for c in cfg_trend_cols if c in df.columns]
+        else:
+            trend_cols = [c for c in df.columns if 'regime_trend' in c.lower()]
+            if not trend_cols:
+                trend_cols = [c for c in df.columns
+                              if 'trend_slope_96' in c.lower() or 'trend_slope_72' in c.lower()]
         
         if trend_cols:
             trend_raw = df[trend_cols[0]].values.astype(float)
@@ -1228,9 +1392,12 @@ class QuantTradingStrategy:
         trend_abs = np.clip(np.abs(trend_raw), 0.0, 3.0)
         trend_score = trend_abs / 3.0  # 趋势越强 → 越接近 1
         
-        # 2）波动因子：命名中包含 regime_vol
-        
-        vol_cols = [c for c in df.columns if 'regime_vol' in c.lower()]
+        # 2）波动因子：优先使用配置的列名；若未配置，则回退到名称匹配
+        cfg_vol_cols = self.config.get('regime_vol_cols')
+        if cfg_vol_cols:
+            vol_cols = [c for c in cfg_vol_cols if c in df.columns]
+        else:
+            vol_cols = [c for c in df.columns if 'regime_vol' in c.lower()]
         if vol_cols:
             vol_raw = df[vol_cols[0]].values.astype(float)
         else:
@@ -1290,9 +1457,24 @@ class QuantTradingStrategy:
                     unique_cols.append(c)
             return unique_cols
         
-        crowding_cols = _pick_cols(['oi_zscore', 'oi_change', 'toptrader_oi_skew', 'crowd'])
-        impact_cols = _pick_cols(['amihud', 'gap_strength', 'gap_signed', 'taker_imbalance_vol'])
-        funding_cols = _pick_cols(['funding_zscore', 'funding_rate'])
+        # 若在 config 中显式配置了列名，则优先使用；否则回退到字符串匹配
+        cfg_crowding = self.config.get('risk_crowding_cols')
+        if cfg_crowding:
+            crowding_cols = [c for c in cfg_crowding if c in df.columns]
+        else:
+            crowding_cols = _pick_cols(['oi_zscore', 'oi_change', 'toptrader_oi_skew', 'crowd'])
+        
+        cfg_impact = self.config.get('risk_impact_cols')
+        if cfg_impact:
+            impact_cols = [c for c in cfg_impact if c in df.columns]
+        else:
+            impact_cols = _pick_cols(['amihud', 'gap_strength', 'gap_signed', 'taker_imbalance_vol'])
+        
+        cfg_funding = self.config.get('risk_funding_cols')
+        if cfg_funding:
+            funding_cols = [c for c in cfg_funding if c in df.columns]
+        else:
+            funding_cols = _pick_cols(['funding_zscore', 'funding_rate'])
         
         risk_score = np.zeros(n, dtype=float)
         
@@ -1583,6 +1765,69 @@ class QuantTradingStrategy:
         
         return self
     
+    def plot_regime_and_risk_scalers(self, model_name: str = 'Ensemble'):
+        """
+        Regime / Risk 层诊断可视化：
+        - 上图：价格 + 模型最终仓位（train + test）
+        - 中图：Regime 缩放因子（train + test）
+        - 下图：Risk 缩放因子（train + test）
+        """
+        if model_name not in self.predictions:
+            print(f"模型 {model_name} 的预测结果不存在，无法绘制 Regime/Risk 诊断图")
+            return
+        
+        # 确保缩放因子已构建，但不重复应用缩放
+        if not hasattr(self, 'regime_scaler_train') or not hasattr(self, 'regime_scaler_test'):
+            self.build_regime_scaler()
+        if not hasattr(self, 'risk_scaler_train') or not hasattr(self, 'risk_scaler_test'):
+            self.build_risk_scaler()
+        
+        # 拼接训练 / 测试段
+        train_pos = np.asarray(self.predictions[model_name]['train']).flatten()
+        test_pos = np.asarray(self.predictions[model_name]['test']).flatten()
+        pos_all = np.concatenate([train_pos, test_pos])
+        
+        regime_all = np.concatenate([self.regime_scaler_train, self.regime_scaler_test])
+        risk_all = np.concatenate([self.risk_scaler_train, self.risk_scaler_test])
+        
+        # 时间索引与价格（使用 close 全样本）
+        idx = pd.to_datetime(self.z_index[:len(pos_all)])
+        close_all = np.concatenate([self.close_train, self.close_test])[:len(pos_all)]
+        
+        fig, axs = plt.subplots(3, 1, figsize=(16, 10), sharex=True)
+        fig.suptitle(f'Regime & Risk 缩放诊断 - {model_name}', fontsize=16, fontweight='bold')
+        
+        # 1) 价格 + 仓位
+        ax1 = axs[0]
+        ax1.plot(idx, close_all, 'b-', linewidth=1.5, label='Price')
+        ax1.set_ylabel('Price', fontsize=10)
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1_twin = ax1.twinx()
+        ax1_twin.plot(idx, pos_all, 'r-', linewidth=1.0, alpha=0.8, label='Position')
+        ax1_twin.set_ylabel('Position', fontsize=10)
+        ax1.set_title('价格与仓位（已包含 Regime & Risk 缩放 后）', fontsize=12, fontweight='bold')
+        
+        # 2) Regime 缩放
+        ax2 = axs[1]
+        ax2.plot(idx, regime_all, 'g-', linewidth=1.2)
+        ax2.set_ylabel('Regime scaler', fontsize=10)
+        ax2.set_ylim(-0.05, 1.05)
+        ax2.grid(True, alpha=0.3, linestyle='--')
+        ax2.set_title('Regime 缩放因子', fontsize=12, fontweight='bold')
+        
+        # 3) Risk 缩放
+        ax3 = axs[2]
+        ax3.plot(idx, risk_all, 'm-', linewidth=1.2)
+        ax3.set_ylabel('Risk scaler', fontsize=10)
+        ax3.set_ylim(-0.05, 1.05)
+        ax3.grid(True, alpha=0.3, linestyle='--')
+        ax3.set_title('风控 & 拥挤度 缩放因子', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout()
+        plt.show(block=False)
+        
+        return self
+    
     def get_performance_summary(self):
         """获取所有模型的绩效汇总"""
         if not self.backtest_results:
@@ -1636,7 +1881,38 @@ class QuantTradingStrategy:
         with open(save_path / 'factor_mapping.pkl', 'wb') as f:
             pickle.dump(factor_mapping, f)
         
-        print(f"模型保存完成，路径: {save_path}")
+        # 额外保存 Regime / Risk 缩放因子、仓位与 PnL 序列，便于事后分析与复现
+        diagnostics = {}
+        
+        # Regime / Risk 缩放因子
+        diagnostics['regime_scaler_train'] = getattr(self, 'regime_scaler_train', None)
+        diagnostics['regime_scaler_test'] = getattr(self, 'regime_scaler_test', None)
+        diagnostics['risk_scaler_train'] = getattr(self, 'risk_scaler_train', None)
+        diagnostics['risk_scaler_test'] = getattr(self, 'risk_scaler_test', None)
+        
+        # 保存每个模型的 train/test 仓位
+        diagnostics['predictions'] = {}
+        for model_name, preds in self.predictions.items():
+            diagnostics['predictions'][model_name] = {
+                'train': np.asarray(preds['train']),
+                'test': np.asarray(preds['test']),
+            }
+        
+        # 保存每个模型的 train/test PnL 序列（需要在 backtest 之后调用）
+        diagnostics['pnl'] = {}
+        for model_name, result in self.backtest_results.items():
+            diagnostics['pnl'][model_name] = {
+                'train_pnl': np.asarray(result['train_pnl']),
+                'test_pnl': np.asarray(result['test_pnl']),
+            }
+        
+        # 可选：保存时间索引，方便对齐
+        diagnostics['z_index'] = np.asarray(self.z_index) if self.z_index is not None else None
+        
+        with open(save_path / 'diagnostics_scalers_positions_pnl.pkl', 'wb') as f:
+            pickle.dump(diagnostics, f)
+        
+        print(f"模型与诊断信息保存完成，路径: {save_path}")
         return self
     
     def run_full_pipeline(self, weight_method='equal', normalize_method=None, enable_factor_selection=False):
@@ -1660,8 +1936,8 @@ class QuantTradingStrategy:
         print("开始运行完整的量化策略流程（整合GP因子）")
         print("="*60)
         
-        # 加载数据
-        self.load_data_from_dataload()
+        # ========== 1. 数据加载 ==========
+        self.data_module.load()
         
         # 如果不是表达式模式，需要从CSV加载因子表达式
         if not self._use_expressions_mode:
@@ -1669,30 +1945,19 @@ class QuantTradingStrategy:
         else:
             print(f"使用预设的 {len(self.factor_expressions)} 个因子表达式")
         
-        # 执行剩余流程
-        pipeline = self.evaluate_factor_expressions()
+        # ========== 2. Alpha 层：因子评估 + 训练 + 预测 ==========
+        self.alpha_module.run_alpha_pipeline(
+            normalize_method=normalize_method,
+            enable_factor_selection=enable_factor_selection,
+            weight_method=weight_method,
+            use_normalized_label=True  # 使用标准化 label，训练更稳定 ⭐推荐
+        )
         
-        # 可选：因子标准化（默认不标准化，与 gplearn 一致）
-        if normalize_method is not None:
-            print(f"⚠️  警告: 启用因子标准化可能导致效果与 gplearn 不一致！")
-            pipeline = pipeline.normalize_factors(method=normalize_method)
-        else:
-            print("ℹ️  不标准化因子（与 gplearn 一致）")
+        # ========== 3. Regime & 风控&拥挤度 层缩放 ==========
+        self.regime_risk_module.apply()
         
-        # 可选：因子筛选（基于相关性）
-        if enable_factor_selection:
-            pipeline = pipeline.select_factors()
-        
-        # 继续后续流程
-        pipeline = (pipeline
-                    .prepare_training_data()
-                    .train_models(use_normalized_label=True)  # 使用标准化 label，训练更稳定 ⭐推荐
-                    .make_predictions(weight_method=weight_method))
-        
-        # 三层结构：在模型预测后，先经过 Regime / 风控 & 拥挤度 缩放，再做回测
-        pipeline = pipeline.apply_regime_and_risk_scaling()
-        
-        pipeline.backtest_all_models()
+        # ========== 4. 回测与绩效汇总 ==========
+        self.backtest_module.run_all_backtests()
         
         # 显示绩效汇总
         summary_df = self.get_performance_summary()
