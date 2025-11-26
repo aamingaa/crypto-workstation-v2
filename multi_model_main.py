@@ -594,6 +594,10 @@ class QuantTradingStrategy:
             'risk_crowding_cols': None,   # 例如 ['oi_zscore_24', 'toptrader_oi_skew_abs']
             'risk_impact_cols': None,     # 例如 ['amihud_illiq_20', 'gap_strength_14']
             'risk_funding_cols': None,    # 例如 ['funding_zscore_24h']
+            # Triple Barrier 集成相关
+            'use_triple_barrier_label': False,   # 是否用 TB 收益替代固定周期收益做回归标签
+            'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
+            'triple_barrier_max_holding': [0, 4] # [天, 小时] 最大持仓时间
         }
     
     def load_data_from_dataload(self):
@@ -1944,6 +1948,20 @@ class QuantTradingStrategy:
             self.load_factor_expressions()
         else:
             print(f"使用预设的 {len(self.factor_expressions)} 个因子表达式")
+        
+        # ========== 1.5 可选：Triple Barrier 标注，替代固定周期收益 ==========
+        if self.config.get('use_triple_barrier_label', False):
+            print("ℹ️ 使用 Triple Barrier 收益作为回归标签")
+            pt_sl = self.config.get('triple_barrier_pt_sl', [2, 2])
+            max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
+            # 先生成 TB 标签和收益
+            self.generate_triple_barrier_labels(
+                pt_sl=pt_sl,
+                max_holding=max_holding,
+                side_prediction=None  # 暂时默认全多头，有需要可以接入方向预测
+            )
+            # 再用 TB 的收益替换 y_train / y_test / ret_train / ret_test
+            self.use_triple_barrier_as_y()
         
         # ========== 2. Alpha 层：因子评估 + 训练 + 预测 ==========
         self.alpha_module.run_alpha_pipeline(
