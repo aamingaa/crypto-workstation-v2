@@ -53,6 +53,11 @@ multi_model_main.py 的改进（修正后）：
       normalize_method=None,              # 不标准化因子
       # train_models 内部默认 use_normalized_label=True  # 使用标准化 label ⭐推荐
   )
+    固定 label（比如 TB 一套合理参数）。
+    单因子诊断：IC、分层收益、Raw factor 回测（不加任何仓位缩放）。
+    多因子 + 简单模型（线性 + 少数因子），看 OOS 改善多少。
+    上复杂模型（XGB/LGB），看是否实质提升，而不是只在 IS 提升。
+    依次开启 Regime → Risk → Kelly，每加一层都对比一次 OOS 指标：
 """
 
 import sys
@@ -77,6 +82,7 @@ import math
 import warnings
 import os
 import yaml
+from scipy.stats import spearmanr
 warnings.filterwarnings('ignore')
 
 # 导入triple_barrier模块
@@ -2010,6 +2016,206 @@ class QuantTradingStrategy:
         print(summary_df.to_string(index=False))
         
         return summary_df
+    
+    # ========== 诊断工具：Label / 因子 / 单因子回测 ==========
+    def diagnose_label_health(self):
+        """
+        简单检查当前 label（ret_train/ret_test 或 TB 收益）的“健康度”：
+        - 训练 / 测试收益分布（均值、标准差、min/max）
+        - 正 / 负 样本占比
+        - 若存在 Triple Barrier：输出 TB 收益与 meta label 分布
+        """
+        print("\n===== Label 健康度诊断 =====")
+        
+        if self.ret_train is None or self.ret_test is None:
+            print("ret_train / ret_test 为空，请确认已经完成数据加载与 label 设置。")
+            return None
+        
+        ret_train = np.asarray(self.ret_train).flatten()
+        ret_test = np.asarray(self.ret_test).flatten()
+        
+        def _summary(arr, name):
+            arr = np.asarray(arr)
+            print(f"\n[{name}]")
+            print(f"  样本数: {len(arr)}")
+            if len(arr) == 0:
+                return
+            print(f"  均值: {np.nanmean(arr):.6f}, 标准差: {np.nanstd(arr):.6f}")
+            print(f"  min: {np.nanmin(arr):.6f}, max: {np.nanmax(arr):.6f}")
+            pos_ratio = np.sum(arr > 0) / len(arr)
+            zero_ratio = np.sum(arr == 0) / len(arr)
+            neg_ratio = np.sum(arr < 0) / len(arr)
+            print(f"  >0 占比: {pos_ratio:.2%}, =0 占比: {zero_ratio:.2%}, <0 占比: {neg_ratio:.2%}")
+        
+        _summary(ret_train, "Train Label (ret_train)")
+        _summary(ret_test, "Test Label (ret_test)")
+        
+        # 若已集成 Triple Barrier，额外输出 TB 统计
+        if hasattr(self, 'barrier_results'):
+            tb_ret = np.asarray(self.barrier_results['ret'].values)
+            print("\n[Triple Barrier 收益（全样本）]")
+            _summary(tb_ret, "TB ret (all)")
+        
+        if hasattr(self, 'meta_labels'):
+            meta = np.asarray(self.meta_labels).astype(float)
+            print("\n[Triple Barrier Meta Label（1=盈利,0=亏损）]")
+            ones_ratio = np.mean(meta == 1)
+            zeros_ratio = np.mean(meta == 0)
+            print(f"  样本数: {len(meta)}")
+            print(f"  meta=1 占比: {ones_ratio:.2%}, meta=0 占比: {zeros_ratio:.2%}")
+        
+        print("===== Label 健康度诊断结束 =====\n")
+        return None
+    
+    def diagnose_factor_ic(self, data_range: str = 'train', top_n: int = 20):
+        """
+        诊断因子强度：计算每个因子相对于 label 的 IC 与 RankIC，并按 |IC| 排序输出前 top_n 个。
+        
+        Args:
+            data_range: 'train' 或 'test'
+            top_n: 输出前多少个因子
+        """
+        print("\n===== 因子 IC / RankIC 诊断 =====")
+        
+        if self.factor_data is None or not hasattr(self, 'selected_factors'):
+            print("因子数据或 selected_factors 为空，请先完成因子评估与因子选择。")
+            return None
+        
+        train_len = len(self.y_train)
+        if data_range == 'train':
+            fac_df = self.factor_data[self.selected_factors].iloc[:train_len]
+            y = np.asarray(self.ret_train).flatten()[:len(fac_df)]
+            print("使用训练集 ret_train 作为 IC 计算的目标。")
+        elif data_range == 'test':
+            fac_df = self.factor_data[self.selected_factors].iloc[train_len:]
+            y = np.asarray(self.ret_test).flatten()[:len(fac_df)]
+            print("使用测试集 ret_test 作为 IC 计算的目标。")
+        else:
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        records = []
+        y = np.asarray(y)
+        for col in fac_df.columns:
+            x = fac_df[col].values
+            mask = np.isfinite(x) & np.isfinite(y)
+            if mask.sum() < 50:
+                continue
+            x_valid = x[mask]
+            y_valid = y[mask]
+            # 皮尔逊 IC
+            try:
+                ic = np.corrcoef(x_valid, y_valid)[0, 1]
+            except Exception:
+                ic = np.nan
+            # Spearman RankIC
+            try:
+                rk = spearmanr(x_valid, y_valid).correlation
+            except Exception:
+                rk = np.nan
+            records.append((col, ic, rk))
+        
+        if not records:
+            print("有效因子样本不足，无法计算 IC。")
+            return None
+        
+        df_ic = pd.DataFrame(records, columns=['factor', 'IC', 'RankIC'])
+        df_ic['|IC|'] = df_ic['IC'].abs()
+        df_ic = df_ic.sort_values('|IC|', ascending=False)
+        
+        print(f"\n按 |IC| 排序的前 {min(top_n, len(df_ic))} 个因子：")
+        print(df_ic.head(top_n).to_string(index=False, float_format=lambda x: f"{x: .4f}"))
+        
+        print("===== 因子 IC / RankIC 诊断结束 =====\n")
+        return df_ic
+    
+    def _build_long_short_position_from_factor(self, factor_values, n_quantiles: int = 5):
+        """
+        给定因子值序列，构建简单的多空分层仓位：
+        - 顶层分位：+1
+        - 底层分位：-1
+        - 其他：0
+        """
+        factor_values = np.asarray(factor_values).astype(float)
+        if len(factor_values) == 0:
+            return np.array([], dtype=float)
+        
+        s = pd.Series(factor_values)
+        # 若全部常数，无法分层，直接返回 0 仓位
+        if s.nunique() <= 1:
+            return np.zeros(len(s), dtype=float)
+        
+        try:
+            q = pd.qcut(s.rank(method='first'), q=n_quantiles, labels=False, duplicates='drop')
+        except ValueError:
+            # 分位数切分失败（样本太少或重复太多），退化为 0 仓位
+            return np.zeros(len(s), dtype=float)
+        
+        pos = np.zeros(len(s), dtype=float)
+        if q.max() == q.min():
+            return pos
+        pos[q == q.max()] = 1.0
+        pos[q == q.min()] = -1.0
+        return pos
+    
+    def backtest_single_factor_long_short(self, factor_name: str, data_range: str = 'test',
+                                          n_quantiles: int = 5):
+        """
+        使用单一因子做简单多空分层回测（不经过多模型、Regime/Risk/Kelly）：
+        - data_range = 'train'：使用训练段因子 + 训练段价格
+        - data_range = 'test'：使用测试段因子 + 测试段价格
+        """
+        if self.factor_data is None:
+            print("因子数据为空，请先完成因子评估。")
+            return None
+        if factor_name not in self.factor_data.columns:
+            print(f"因子 {factor_name} 不在 factor_data 中。")
+            return None
+        
+        train_len = len(self.y_train)
+        if data_range == 'train':
+            fac_vals = self.factor_data[factor_name].iloc[:train_len].values
+            pos = self._build_long_short_position_from_factor(fac_vals, n_quantiles=n_quantiles)
+            pnl, metrics = self.real_trading_simulator(pos, 'train', self.config['fees_rate'])
+        elif data_range == 'test':
+            fac_vals = self.factor_data[factor_name].iloc[train_len:].values
+            pos = self._build_long_short_position_from_factor(fac_vals, n_quantiles=n_quantiles)
+            pnl, metrics = self.real_trading_simulator(pos, 'test', self.config['fees_rate'])
+        else:
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        print(f"\n===== 单因子多空回测：{factor_name} | {data_range} 段 =====")
+        for k, v in metrics.items():
+            if "Rate" in k or "Ratio" in k or "Return" in k or "Drawdown" in k:
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
+        print("===== 单因子多空回测结束 =====\n")
+        return pnl, metrics
+    
+    def diagnose_top_factors_backtest(self, data_range: str = 'test',
+                                      top_n: int = 5, n_quantiles: int = 5):
+        """
+        组合使用 diagnose_factor_ic 与 backtest_single_factor_long_short：
+        - 先在指定区间计算所有因子 IC
+        - 取 |IC| 最大的前 top_n 个因子
+        - 分别做单因子多空分层回测，输出简要指标
+        """
+        df_ic = self.diagnose_factor_ic(data_range=data_range, top_n=top_n)
+        if df_ic is None or df_ic.empty:
+            return None
+        
+        top_factors = df_ic['factor'].head(top_n).tolist()
+        results = {}
+        print(f"\n>>> 对 |IC| Top {len(top_factors)} 因子做单因子多空回测（{data_range} 段）")
+        for fct in top_factors:
+            _, metrics = self.backtest_single_factor_long_short(
+                factor_name=fct,
+                data_range=data_range,
+                n_quantiles=n_quantiles
+            )
+            results[fct] = metrics
+        
+        return results
     
     def save_models(self):
         """保存模型"""
