@@ -141,7 +141,7 @@ from gp_crypto_next.functions import _function_map
 import gp_crypto_next.dataload as dataload
 
 # 导入模型库
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, LassoCV
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, LassoCV, LogisticRegression
 from xgboost import XGBRegressor
 import xgboost as xgb
 import lightgbm as lgb
@@ -597,7 +597,10 @@ class QuantTradingStrategy:
             # Triple Barrier 集成相关
             'use_triple_barrier_label': False,   # 是否用 TB 收益替代固定周期收益做回归标签
             'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
-            'triple_barrier_max_holding': [0, 4] # [天, 小时] 最大持仓时间
+            'triple_barrier_max_holding': [0, 4],# [天, 小时] 最大持仓时间
+            # Kelly bet size 模式
+            'use_kelly_bet_sizing': False,       # 是否使用基于 p、R 的 Kelly 仓位 sizing
+            'kelly_fraction': 0.25,              # Fractional Kelly 系数 c（通常 0.1~0.5）
         }
     
     def load_data_from_dataload(self):
@@ -1016,6 +1019,152 @@ class QuantTradingStrategy:
         print(f"已替换训练目标为 Triple Barrier 收益")
         print(f"训练集收益范围: [{self.ret_train.min():.4f}, {self.ret_train.max():.4f}]")
         print(f"测试集收益范围: [{self.ret_test.min():.4f}, {self.ret_test.max():.4f}]")
+        
+        return self
+    
+    # ========= Lopez 风格 Kelly bet sizing 所需方法 =========
+    def _ensure_triple_barrier_for_kelly(self):
+        """
+        确保已生成 Triple Barrier 结果（用于 meta-label 和 R 计算），
+        若尚未生成则使用配置参数自动生成。
+        """
+        if hasattr(self, 'barrier_results') and hasattr(self, 'meta_labels'):
+            return
+        
+        print("ℹ️ Kelly 模式需要 Triple Barrier 结果，自动调用 generate_triple_barrier_labels()")
+        pt_sl = self.config.get('triple_barrier_pt_sl', [2, 2])
+        max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
+        self.generate_triple_barrier_labels(
+            pt_sl=pt_sl,
+            max_holding=max_holding,
+            side_prediction=None
+        )
+    
+    def train_meta_model_for_kelly(self):
+        """
+        基于 Triple Barrier 的 meta-label 训练胜率模型（Lopez 的 meta 模型）：
+        - 输入：因子特征 X_train/X_test
+        - 标签：meta_labels（1=盈利, 0=亏损）
+        - 输出：每个样本的 P(meta=1) 概率
+        """
+        self._ensure_triple_barrier_for_kelly()
+        
+        if not hasattr(self, 'meta_labels'):
+            raise ValueError("未找到 meta_labels，无法训练 Kelly meta 模型")
+        
+        meta_arr = np.asarray(self.meta_labels).astype(float)
+        train_len = len(self.y_train)
+        total_len = train_len + len(self.y_test)
+        meta_arr = meta_arr[:total_len]
+        
+        meta_train = meta_arr[:train_len]
+        meta_test = meta_arr[train_len:total_len]
+        
+        clf = LogisticRegression(max_iter=1000)
+        clf.fit(self.X_train, meta_train)
+        self.meta_model = clf
+        
+        self.meta_p_train = clf.predict_proba(self.X_train)[:, 1]
+        self.meta_p_test = clf.predict_proba(self.X_test)[:, 1]
+        
+        print("Meta 模型训练完成（用于 Kelly 胜率估计）")
+        print(f"  meta=1 占比（train）：{meta_train.mean():.2%}")
+        print(f"  预测 P(meta=1) 均值（train）：{self.meta_p_train.mean():.2%}")
+        return self
+    
+    def _compute_tb_R_for_kelly(self):
+        """
+        基于 Triple Barrier 收益在训练集区间内计算全局盈亏比 R = avg(win) / avg(|loss|)
+        """
+        self._ensure_triple_barrier_for_kelly()
+        
+        ret_tb = np.asarray(self.barrier_results['ret'].values)
+        train_len = len(self.y_train)
+        ret = ret_tb[:train_len]
+        
+        wins = ret[ret > 0]
+        losses = ret[ret < 0]
+        if len(wins) == 0 or len(losses) == 0:
+            print("⚠️ Kelly 计算中无 win 或 loss 样本，R=0")
+            return 0.0
+        
+        avg_win = wins.mean()
+        avg_loss = np.abs(losses.mean())
+        if avg_loss <= 1e-8:
+            print("⚠️ Kelly 计算中 avg_loss 接近 0，R=0")
+            return 0.0
+        
+        R = avg_win / avg_loss
+        print(f"基于 Triple Barrier 的全局盈亏比 R = {R:.3f}")
+        return R
+    
+    def apply_kelly_bet_sizing(self, base_model_name: str = 'Ensemble'):
+        """
+        Lopez 风格 Kelly bet sizing：
+        - 方向（side）：来自指定模型预测的符号（默认 'Ensemble'）
+        - 胜率（p）：来自 meta 模型的 P(meta=1)
+        - 盈亏比（R）：基于 TB 收益在训练集上的 avg(win)/avg(|loss|)
+        - 大小：fractional Kelly：f* = p - (1-p)/R，size = c * max(f*, 0)，再剪裁到 [-clip_num, clip_num]
+        
+        注意：
+        - 仅在 config['use_kelly_bet_sizing']=True 时使用
+        - 不改变 Regime/Risk 层逻辑，Kelly 作为 Alpha 层的 bet sizing
+        """
+        if not self.config.get('use_kelly_bet_sizing', False):
+            print("未启用 Kelly bet sizing，跳过")
+            return self
+        
+        if not self.predictions:
+            print("⚠️ 尚未生成模型预测，无法应用 Kelly bet sizing")
+            return self
+        
+        # 1. 确保有 meta 模型和 TB R
+        if not hasattr(self, 'meta_p_train') or not hasattr(self, 'meta_p_test'):
+            self.train_meta_model_for_kelly()
+        R = self._compute_tb_R_for_kelly()
+        if R <= 0:
+            print("⚠️ R <= 0，Kelly bet sizing 失效，保持原始仓位")
+            return self
+        
+        c = float(self.config.get('kelly_fraction', 0.25))
+        clip_num = float(self.config.get('clip_num', 5.0))
+        
+        p_train = np.asarray(self.meta_p_train)
+        p_test = np.asarray(self.meta_p_test)
+        
+        # 全 Kelly 理论比例 f* = p - (1-p)/R，负值时视为不下注
+        f_train = p_train - (1.0 - p_train) / R
+        f_test = p_test - (1.0 - p_test) / R
+        f_train = np.maximum(f_train, 0.0)
+        f_test = np.maximum(f_test, 0.0)
+        
+        size_train = np.clip(c * f_train, 0.0, clip_num)
+        size_test = np.clip(c * f_test, 0.0, clip_num)
+        
+        print(f"Kelly 仓位 sizing 完成：c={c}, "
+              f"size_train_mean={size_train.mean():.3f}, size_test_mean={size_test.mean():.3f}")
+        
+        # 2. 方向：使用某个基准模型预测的符号（默认 Ensemble）
+        if base_model_name not in self.predictions:
+            # 若没有 Ensemble，则退回第一个模型
+            base_model_name = next(iter(self.predictions.keys()))
+            print(f"指定的基准模型不存在，改用 {base_model_name} 作为 Kelly 方向来源")
+        
+        base_train = np.asarray(self.predictions[base_model_name]['train']).flatten()
+        base_test = np.asarray(self.predictions[base_model_name]['test']).flatten()
+        
+        side_train = np.sign(base_train)
+        side_test = np.sign(base_test)
+        side_train[np.isnan(side_train)] = 0.0
+        side_test[np.isnan(side_test)] = 0.0
+        
+        # 3. 用 Kelly size 替换所有模型的基础仓位大小（方向来自各自或统一方向，这里统一用 base 模型方向）
+        for model_name in self.predictions.keys():
+            # 如果你更希望各模型方向不同，可以改为对各自预测取 sign
+            train_pos_new = side_train * size_train
+            test_pos_new = side_test * size_test
+            self.predictions[model_name]['train'] = train_pos_new
+            self.predictions[model_name]['test'] = test_pos_new
         
         return self
     
@@ -1970,6 +2119,11 @@ class QuantTradingStrategy:
             weight_method=weight_method,
             use_normalized_label=True  # 使用标准化 label，训练更稳定 ⭐推荐
         )
+        
+        # ========== 2.5 可选：Lopez 风格 Kelly bet sizing ==========
+        if self.config.get('use_kelly_bet_sizing', False):
+            print("ℹ️ 启用 Lopez 风格 Kelly bet sizing")
+            self.apply_kelly_bet_sizing(base_model_name='Ensemble')
         
         # ========== 3. Regime & 风控&拥挤度 层缩放 ==========
         self.regime_risk_module.apply()
