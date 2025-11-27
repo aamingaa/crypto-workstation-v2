@@ -2018,6 +2018,7 @@ class QuantTradingStrategy:
         return summary_df
     
     # ========== 诊断工具：Label / 因子 / 单因子回测 ==========
+    # 诊断：检查当前 label（ret_train/ret_test 或 TB 收益）的分布与正负样本占比
     def diagnose_label_health(self):
         """
         简单检查当前 label（ret_train/ret_test 或 TB 收益）的“健康度”：
@@ -2067,6 +2068,7 @@ class QuantTradingStrategy:
         print("===== Label 健康度诊断结束 =====\n")
         return None
     
+    # 诊断：计算所有已选因子在指定区间相对 label 的 IC / RankIC，并按 |IC| 排序
     def diagnose_factor_ic(self, data_range: str = 'train', top_n: int = 20):
         """
         诊断因子强度：计算每个因子相对于 label 的 IC 与 RankIC，并按 |IC| 排序输出前 top_n 个。
@@ -2128,6 +2130,7 @@ class QuantTradingStrategy:
         print("===== 因子 IC / RankIC 诊断结束 =====\n")
         return df_ic
     
+    # 工具：给定一条因子序列，按分位数构造简单多空仓位（顶分位 +1，底分位 -1）
     def _build_long_short_position_from_factor(self, factor_values, n_quantiles: int = 5):
         """
         给定因子值序列，构建简单的多空分层仓位：
@@ -2157,6 +2160,7 @@ class QuantTradingStrategy:
         pos[q == q.min()] = -1.0
         return pos
     
+    # 回测：使用单一因子构建多空组合，独立于多模型/Regime/Risk/Kelly，直观评估该因子强度
     def backtest_single_factor_long_short(self, factor_name: str, data_range: str = 'test',
                                           n_quantiles: int = 5):
         """
@@ -2192,6 +2196,7 @@ class QuantTradingStrategy:
         print("===== 单因子多空回测结束 =====\n")
         return pnl, metrics
     
+    # 诊断：自动选取 |IC| Top 因子，在指定区间做单因子多空回测，快速筛查强因子/弱因子
     def diagnose_top_factors_backtest(self, data_range: str = 'test',
                                       top_n: int = 5, n_quantiles: int = 5):
         """
