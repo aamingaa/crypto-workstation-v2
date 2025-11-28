@@ -1,0 +1,4 @@
+,expression
+0,ts_wma_8(ts_kurt_40(close_macd))
+1,"ta_tema_8(ta_mom_25(ta_mfi_25(ori_ta_macd, obv_lr_slope_20, c_ta_tsf_5, l)))"
+2,ta_dema_21(ta_lr_slope_5(ts_range_5(ts_min_20(ta_lr_slope_5(vol_ccy)))))
