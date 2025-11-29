@@ -5,7 +5,47 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import platform
+import matplotlib as mpl
 
+def setup_chinese_font_for_mac():
+    """
+    为Mac系统设置中文字体支持
+    """
+    if platform.system() == 'Darwin':  # Mac系统
+        # 检查系统可用字体
+        available_fonts = [f.name for f in mpl.font_manager.fontManager.ttflist]
+        
+        # Mac系统常见的中文字体列表（按优先级排序）
+        mac_chinese_fonts = [
+            'PingFang SC',      # 苹果默认中文字体
+            'Songti SC',        # 宋体
+            'STSong',          # 华文宋体
+            'Arial Unicode MS', # 支持中文的Arial
+            'SimHei',          # 黑体
+            'Hiragino Sans GB', # 冬青黑体
+            'STHeiti'          # 华文黑体
+        ]
+        
+        # 寻找可用的中文字体
+        selected_font = None
+        for font in mac_chinese_fonts:
+            if font in available_fonts:
+                selected_font = font
+                break
+        
+        if selected_font:
+            plt.rcParams['font.sans-serif'] = [selected_font] + plt.rcParams['font.sans-serif']
+            plt.rcParams['axes.unicode_minus'] = False
+            print(f"✅ 已设置中文字体: {selected_font}")
+            return True
+        else:
+            plt.rcParams['axes.unicode_minus'] = False
+            return False
+    return True
+
+# 调用字体设置函数
+setup_chinese_font_for_mac()
 
 class Visualizer:
     """
@@ -138,13 +178,16 @@ class Visualizer:
             print(f"模型 {model_name} 的预测结果不存在")
             return
         
-        # 拼接训练/测试段
+        # 拼接训练/测试段（仓位）
         train_pos = np.asarray(predictions[model_name]['train']).flatten()
         test_pos = np.asarray(predictions[model_name]['test']).flatten()
         pos_all = np.concatenate([train_pos, test_pos])
-        
+
+        # Regime / Risk 缩放直接拼接后，截断到与仓位一样长即可
         regime_all = np.concatenate([regime_scaler_train, regime_scaler_test])
         risk_all = np.concatenate([risk_scaler_train, risk_scaler_test])
+        regime_all = regime_all[:len(pos_all)]
+        risk_all = risk_all[:len(pos_all)]
         
         # 时间索引与价格
         idx = pd.to_datetime(self.z_index[:len(pos_all)])
@@ -155,13 +198,17 @@ class Visualizer:
         
         # 1) 价格 + 仓位
         ax1 = axs[0]
-        ax1.plot(idx, close_all, 'b-', linewidth=1.5, label='Price')
+        price_line, = ax1.plot(idx, close_all, 'b-', linewidth=1.5, label='价格（蓝线）')
         ax1.set_ylabel('Price', fontsize=10)
         ax1.grid(True, alpha=0.3, linestyle='--')
         ax1_twin = ax1.twinx()
-        ax1_twin.plot(idx, pos_all, 'r-', linewidth=1.0, alpha=0.8, label='Position')
+        pos_line, = ax1_twin.plot(idx, pos_all, 'r-', linewidth=1.0, alpha=0.8, label='仓位（红线）')
         ax1_twin.set_ylabel('Position', fontsize=10)
-        ax1.set_title('价格与仓位（已包含 Regime & Risk 缩放后）', fontsize=12, fontweight='bold')
+        ax1.set_title('价格（蓝线）与仓位（红线）（已包含 Regime & Risk 缩放后）', fontsize=12, fontweight='bold')
+        # 合并图例，明确标记价格与仓位
+        lines = [price_line, pos_line]
+        labels = [line.get_label() for line in lines]
+        ax1.legend(lines, labels, loc='upper left')
         
         # 2) Regime 缩放
         ax2 = axs[1]

@@ -8,7 +8,7 @@ y_train_ret_period: 8    # 预测未来1个粗粒度周期的收益（1×2h=2小
 start_date_train: '2022-01-01'
 end_date_train: '2025-01-01'
 start_date_test: '2025-01-01'
-end_date_test: '2025-06-01'
+end_date_test: '2025-05-01'
 timeframe: '15m'
 # data_dir: '/Volumes/Ext-Disk/data/futures/um/monthly/klines/ETHUSDT/15m'
 data_dir: '/Users/aming/data/ETHUSDT/15m'

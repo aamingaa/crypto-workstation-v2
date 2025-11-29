@@ -49,6 +49,9 @@ class DataModule:
         self.close_test = None
         self.y_p_train_origin = None
         self.y_p_test_origin = None
+        # 训练集 / 测试集索引（仅 coarse_grain 模式使用）
+        self.train_index = None
+        self.test_index = None
     
     def load(self):
         """加载数据"""
@@ -77,7 +80,8 @@ class DataModule:
                 (self.X_all, self.X_train, self.y_train, self.ret_train,
                  self.X_test, self.y_test, self.ret_test, self.feature_names,
                  self.open_train, self.open_test, self.close_train, self.close_test,
-                 self.z_index, self.ohlc, self.y_p_train_origin, self.y_p_test_origin
+                 self.z_index, self.ohlc, self.y_p_train_origin, self.y_p_test_origin,
+                 self.train_index, self.test_index
                  ) = dataload.data_prepare_coarse_grain_rolling_offset(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
@@ -142,5 +146,7 @@ class DataModule:
             'close_test': self.close_test,
             'y_p_train_origin': self.y_p_train_origin,
             'y_p_test_origin': self.y_p_test_origin,
+            'train_index': self.train_index,
+            'test_index': self.test_index,
         }
 

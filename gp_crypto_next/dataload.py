@@ -1218,6 +1218,9 @@ def data_prepare_coarse_grain_rolling_offset(
     print(f"ret_rolling_zscore - 偏度: {df_samples['ret_rolling_zscore'].skew():.4f}, 峰度: {df_samples['ret_rolling_zscore'].kurtosis():.4f}")
     
     # ========== 分割训练集和测试集 ==========
+    # 说明：
+    # - 训练集样本的标签使用 [decision_timestamps, prediction_timestamps] 区间的未来收益
+    # - 为避免训练样本在计算标签时跨越到测试区间，这里在 end_date_train 前预留 2 * prediction_horizon_td 的安全边界
     effective_end_train = pd.to_datetime(end_date_train) - 2 * prediction_horizon_td
     train_mask = (df_samples.index >= pd.to_datetime(start_date_train)) & \
                  (df_samples.index < pd.to_datetime(effective_end_train))
@@ -1249,6 +1252,10 @@ def data_prepare_coarse_grain_rolling_offset(
     close_test = df_samples.loc[test_mask, 't_price']
     
     feature_names = feature_cols
+    
+    # 保存训练集 / 测试集对应的时间索引，供后续因子模块精确对齐使用
+    train_index = df_samples.index[train_mask]
+    test_index = df_samples.index[test_mask]
     
     # 格式转换
     if output_format == 'ndarry':
@@ -1288,10 +1295,11 @@ def data_prepare_coarse_grain_rolling_offset(
     print(f'检查y_p_train_origin的形状 {y_p_train_origin.shape}')
     print(f'检查y_p_test_origin的形状 {y_p_test_origin.shape}')
 
-    # 返回接口与 data_prepare 保持一致
+    # 返回接口与 data_prepare 基本保持一致，新增 train_index / test_index 用于后续对齐因子
     return (X_all, X_train, y_train, ret_train, X_test, y_test, ret_test,
             feature_names, open_train, open_test, close_train, close_test,
-            df_samples.index, ohlc_aligned, y_p_train_origin, y_p_test_origin)
+            df_samples.index, ohlc_aligned, y_p_train_origin, y_p_test_origin,
+            train_index, test_index)
 
 
 def compute_transformed_series(column):

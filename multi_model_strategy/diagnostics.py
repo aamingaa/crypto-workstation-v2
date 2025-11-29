@@ -95,12 +95,16 @@ class DiagnosticTools:
         print("\n===== 因子 IC / RankIC 诊断 =====")
         
         train_len = len(self.ret_train)
+        test_len = len(self.ret_test)
+        
         if data_range == 'train':
+            # 训练段：取前 train_len 行，与 ret_train 对齐
             fac_df = self.factor_data[self.selected_factors].iloc[:train_len]
             y = np.asarray(self.ret_train).flatten()[:len(fac_df)]
             print("使用训练集 ret_train 作为 IC 计算的目标。")
         elif data_range == 'test':
-            fac_df = self.factor_data[self.selected_factors].iloc[train_len:]
+            # 测试段：从尾部取 test_len 行，与 ret_test 对齐
+            fac_df = self.factor_data[self.selected_factors].iloc[-test_len:]
             y = np.asarray(self.ret_test).flatten()[:len(fac_df)]
             print("使用测试集 ret_test 作为 IC 计算的目标。")
         else:

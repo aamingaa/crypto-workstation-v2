@@ -175,8 +175,14 @@ class QuantTradingStrategy:
         if not self._use_expressions_mode and self.factor_csv_path:
             self._load_factor_expressions_from_csv()
         
+        use_triple_barrier_label = self.config.get('use_triple_barrier_label', False)
+        
+        use_kelly_bet_sizing = self.config.get('use_kelly_bet_sizing', False)
+
+        print(f"use_triple_barrier_label: {use_triple_barrier_label}, normalize_method: {normalize_method}, enable_factor_selection: {enable_factor_selection}, weight_method: {weight_method}, use_kelly_bet_sizing: {use_kelly_bet_sizing}")
+        
         # 3. Triple Barrier（可选）
-        if self.config.get('use_triple_barrier_label', False):
+        if use_triple_barrier_label:
             self._apply_triple_barrier_labels()
         
         # 4. 因子评估
@@ -186,7 +192,7 @@ class QuantTradingStrategy:
         self._train_and_predict(weight_method)
         
         # 6. Kelly bet sizing（可选）
-        if self.config.get('use_kelly_bet_sizing', False):
+        if use_kelly_bet_sizing:
             self._apply_kelly_sizing()
         
         # 7. Regime & Risk 缩放
@@ -308,7 +314,8 @@ class QuantTradingStrategy:
             self.X_all,
             self.feature_names,
             self.y_train,
-            self.data_config.get('rolling_window', 200)
+            rolling_window=self.data_config.get('rolling_window', 200),
+            index=self.z_index  # 使用时间索引对齐因子与样本
         )
         
         self.factor_engine.evaluate_expressions()
@@ -329,9 +336,24 @@ class QuantTradingStrategy:
         selected_factors = self.factor_engine.get_selected_factors()
         factor_data = self.factor_engine.get_factor_data()
         
-        train_len = len(self.y_train)
-        X_train = factor_data[selected_factors].iloc[:train_len].values
-        X_test = factor_data[selected_factors].iloc[train_len:].values
+        # 使用 dataloader 返回的时间索引来对齐训练集 / 测试集，避免中间 gap 带来的错位
+        train_index = getattr(self.data_module, 'train_index', None)
+        test_index = getattr(self.data_module, 'test_index', None)
+        
+        if train_index is not None and test_index is not None:
+            
+            X_train = factor_data.loc[train_index, selected_factors].values
+            X_test = factor_data.loc[test_index, selected_factors].values
+            
+            print(f"使用时间索引切分因子数据: X_train={X_train.shape}, X_test={X_test.shape}")
+        else:
+            # 回退到旧逻辑（仅用于 kline 等不返回索引的模式）
+            train_len = len(self.y_train)
+            test_len = len(self.y_test)
+            
+            print(f"[fallback] X_all len: {len(self.X_all)}, train_len: {train_len}, test_len: {test_len}")
+            X_train = factor_data[selected_factors].iloc[:train_len].values
+            X_test = factor_data[selected_factors].iloc[-test_len:].values
         
         # 初始化诊断工具（需要因子数据）
         self.diagnostic_tools = DiagnosticTools(

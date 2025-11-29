@@ -66,15 +66,15 @@ class AlphaModelTrainer:
         # 3. Lasso回归
         print("训练Lasso回归模型...")
         lasso_model = LassoCV(fit_intercept=True, max_iter=5000)
-        lasso_model.fit(self.X_train, train_label.flatten())
+        lasso_model.fit(self.X_train, train_label)
         self.models['Lasso'] = lasso_model
         
         # 4. XGBoost
         print("训练XGBoost模型...")
         X_train_df = pd.DataFrame(self.X_train, columns=self.selected_factors)
-        y_train_series = pd.Series(train_label.flatten())
+        y_train_series = pd.Series(train_label)
         X_test_df = pd.DataFrame(self.X_test, columns=self.selected_factors)
-        y_test_series = pd.Series(test_label.flatten())
+        y_test_series = pd.Series(test_label)
         
         xgb_model = XGBRegressor(
             max_depth=3,

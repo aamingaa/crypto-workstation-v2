@@ -25,7 +25,8 @@ class FactorEngine:
     因子引擎：评估、标准化、筛选因子
     """
     
-    def __init__(self, factor_expressions, X_all, feature_names, y_train, rolling_window=200):
+    def __init__(self, factor_expressions, X_all, feature_names, y_train,
+                 rolling_window=200, index=None):
         """
         Args:
             factor_expressions (list): 因子表达式列表
@@ -39,6 +40,8 @@ class FactorEngine:
         self.feature_names = feature_names
         self.y_train = y_train
         self.rolling_window = rolling_window
+        # 对齐用的时间索引（通常来自 df_samples.index 或 z_index）
+        self.index = index
         
         self.evaluator = None
         self.factor_data = None  # pd.DataFrame
@@ -81,11 +84,12 @@ class FactorEngine:
         if not factor_values_list:
             raise ValueError("所有因子表达式评估失败")
         
-        # 转换为DataFrame
+        # 转换为DataFrame；如果提供了 index，则使用时间索引对齐
         factor_columns = [f'gp_factor_{i}' for i in range(len(valid_expressions))]
         self.factor_data = pd.DataFrame(
             np.column_stack(factor_values_list),
-            columns=factor_columns
+            columns=factor_columns,
+            index=self.index
         )
         
         self.valid_factor_expressions = valid_expressions

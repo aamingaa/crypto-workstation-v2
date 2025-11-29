@@ -84,9 +84,9 @@ strategy.plot_results('Ensemble')
 strategy.plot_regime_and_risk('Ensemble')
 
 # 诊断分析
-strategy.diagnose_label_health()
-df_ic = strategy.diagnose_factor_ic(data_range='train', top_n=10)
-strategy.diagnose_top_factors(data_range='test', top_n=3)
+# strategy.diagnose_label_health()
+# df_ic = strategy.diagnose_factor_ic(data_range='train', top_n=10)
+# strategy.diagnose_top_factors(data_range='test', top_n=3)
 
 # 保存模型
 strategy.save_models('./saved_models')
