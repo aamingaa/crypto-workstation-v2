@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import joblib
 import pickle
+import matplotlib.pyplot as plt
 
 # 确保项目路径和 gp_crypto_next 都在 sys.path
 project_root = Path(__file__).resolve().parent.parent
@@ -417,6 +418,145 @@ class QuantTradingStrategy:
         """步骤8：回测"""
         self.backtest_results = self.backtest_engine.backtest_all_models(self.predictions)
         self.backtest_engine.get_performance_summary()
+    
+    # ========== 小区间诊断接口 ==========
+    
+    def backtest_subperiod(self, start_bar, end_bar, model_name='Ensemble', data_range='test'):
+        """
+        小区间回测：对指定 bar 区间的仓位做单独回测与诊断
+        
+        Args:
+            start_bar (int): 相对于 data_range 起点的起始 bar（含）
+            end_bar (int): 相对于 data_range 起点的结束 bar（不含）
+            model_name (str): 模型名称
+            data_range (str): 'train' 或 'test'
+        
+        Returns:
+            tuple: (pnl_sub, metrics_sub)
+        """
+        if not self.predictions:
+            print("请先完成模型训练与整体回测")
+            return None, None
+        
+        if model_name not in self.predictions:
+            print(f"模型 {model_name} 的预测结果不存在")
+            return None, None
+        
+        if data_range not in ('train', 'test'):
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        pos = self.predictions[model_name][data_range]
+        pnl_sub, metrics_sub = self.backtest_engine.run_backtest_subperiod(
+            pos, data_range=data_range, start_bar=start_bar, end_bar=end_bar
+        )
+        
+        print(f"\n===== 小区间回测结果 | 模型: {model_name} | 区间: {data_range}[{start_bar}:{end_bar}] =====")
+        for k, v in metrics_sub.items():
+            if "Rate" in k or "Ratio" in k or "Return" in k or "Drawdown" in k:
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
+        print("===== 小区间回测结束 =====\n")
+        
+        return pnl_sub, metrics_sub
+    
+    def backtest_subperiod_by_time(self, start_time, end_time, model_name='Ensemble', data_range='test'):
+        """
+        按时间区间做小区间回测（内部自动映射为 bar 区间）
+        
+        Args:
+            start_time (str or pd.Timestamp): 区间起始时间（含），如 '2025-02-01 00:00:00'
+            end_time (str or pd.Timestamp): 区间结束时间（不含）
+            model_name (str): 模型名称
+            data_range (str): 'train' 或 'test'
+        
+        Returns:
+            tuple: (pnl_sub, metrics_sub)
+        """
+        if self.data_module is None or self.z_index is None:
+            print("数据模块尚未初始化，无法按时间做小区间回测")
+            return None, None
+        
+        if data_range not in ('train', 'test'):
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        # 时间标准化
+        start_ts = pd.to_datetime(start_time)
+        end_ts = pd.to_datetime(end_time)
+        
+        # 取对应区间的时间索引
+        train_len = len(self.y_train)
+        test_len = len(self.y_test)
+        
+        if getattr(self.data_module, 'train_index', None) is not None and \
+           getattr(self.data_module, 'test_index', None) is not None:
+            # coarse_grain 路径：直接使用 train_index / test_index
+            if data_range == 'train':
+                idx_range = self.data_module.train_index
+            else:
+                idx_range = self.data_module.test_index
+        else:
+            # kline 等路径：用 z_index 按长度切分
+            if data_range == 'train':
+                idx_range = pd.to_datetime(self.z_index[:train_len])
+            else:
+                idx_range = pd.to_datetime(self.z_index[train_len:train_len + test_len])
+        
+        # 根据时间找到对应的 bar 区间
+        idx_range = pd.to_datetime(idx_range)
+        mask = (idx_range >= start_ts) & (idx_range < end_ts)
+        pos_indices = np.where(mask)[0]
+        
+        if len(pos_indices) == 0:
+            print(f"在 {data_range} 段内未找到时间区间 [{start_ts}, {end_ts}) 对应的样本")
+            return None, None
+        
+        start_bar = int(pos_indices[0])
+        end_bar = int(pos_indices[-1] + 1)
+        
+        print(f"时间区间 [{start_ts}, {end_ts}) 映射到 {data_range} 段 bar 区间 [{start_bar}:{end_bar}]")
+        pnl_sub, metrics_sub = self.backtest_subperiod(
+            start_bar, end_bar, model_name=model_name, data_range=data_range
+        )
+
+        # 构造与 pnl_sub 对齐的时间索引与价格
+        idx_sub = idx_range[start_bar:end_bar]
+        if data_range == 'train':
+            price_all = self.data_module.close_train
+        else:
+            price_all = self.data_module.close_test
+
+        # 价格可能是 Series 或 ndarray
+        if isinstance(price_all, pd.Series):
+            price_vals = price_all.values
+        else:
+            price_vals = np.asarray(price_all)
+        price_sub = price_vals[start_bar:end_bar]
+
+        # 绘制价格 + 累计PnL
+        fig, ax1 = plt.subplots(figsize=(10, 4))
+        ax1.plot(idx_sub, price_sub, 'b-', linewidth=1.2, label='价格')
+        ax1.set_xlabel('时间')
+        ax1.set_ylabel('价格', color='b')
+        ax1.tick_params(axis='y', labelcolor='b')
+        ax1.grid(True, alpha=0.3, linestyle='--')
+
+        ax2 = ax1.twinx()
+        ax2.plot(idx_sub, pnl_sub, 'r-', linewidth=1.5, label='累计PnL')
+        ax2.set_ylabel('累计收益', color='r')
+        ax2.tick_params(axis='y', labelcolor='r')
+
+        plt.title(f'子区间价格与累计PnL [{start_time} ~ {end_time}]')
+
+        # 合并图例
+        lines = ax1.get_lines() + ax2.get_lines()
+        labels = [l.get_label() for l in lines]
+        ax1.legend(lines, labels, loc='upper left')
+
+        fig.tight_layout()
+        plt.show()
+
+        return pnl_sub, metrics_sub
     
     # ========== 可视化接口 ==========
     

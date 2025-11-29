@@ -93,28 +93,112 @@ class BacktestEngine:
         metrics = self._calculate_metrics(gain_loss, pnl)
         
         return pnl, metrics
+
+    def run_backtest_subperiod(self, pos, data_range='test', start_bar=None, end_bar=None):
+        """
+        小区间回测：在指定 bar 区间内重新计算 PnL 与绩效
+        
+        Args:
+            pos (np.ndarray): 全段仓位序列（train 或 test）
+            data_range (str): 'train' 或 'test'
+            start_bar (int, optional): 区间起始 bar（相对于当前 data_range 的 0-based 索引，含）
+            end_bar (int, optional): 区间结束 bar（相对于当前 data_range 的 0-based 索引，不含）
+        
+        Returns:
+            tuple: (pnl_sub, metrics_sub)
+        """
+        # 获取对应的价格数据
+        if data_range == 'train':
+            open_data = self.open_train
+            close_data = self.close_train
+        elif data_range == 'test':
+            open_data = self.open_test
+            close_data = self.close_test
+        else:
+            raise ValueError(f"不支持的data_range: {data_range}")
+        
+        # 转换为 numpy 数组
+        if isinstance(open_data, pd.Series):
+            open_data = open_data.values
+        if isinstance(close_data, pd.Series):
+            close_data = close_data.values
+        
+        pos = np.asarray(pos).flatten()
+        
+        # 统一长度
+        min_len = min(len(pos), len(open_data), len(close_data))
+        pos = pos[:min_len]
+        open_data = open_data[:min_len]
+        close_data = close_data[:min_len]
+        
+        # 处理子区间索引
+        if start_bar is None:
+            start_bar = 0
+        if end_bar is None or end_bar > min_len:
+            end_bar = min_len
+        if start_bar < 0 or start_bar >= end_bar:
+            raise ValueError(f"非法的小区间索引: start_bar={start_bar}, end_bar={end_bar}, 长度={min_len}")
+        
+        pos_sub = pos[start_bar:end_bar]
+        open_sub = open_data[start_bar:end_bar]
+        close_sub = close_data[start_bar:end_bar]
+        
+        # 与 run_backtest 中相同的交易逻辑
+        next_open = np.concatenate((open_sub[1:], np.array([close_sub[-1]])))
+        close = close_sub
+        
+        real_pos = pos_sub
+        pos_change = np.concatenate((np.array([0]), np.diff(real_pos)))
+        
+        which_price_to_trade = np.where(
+            pos_change > 0,
+            np.maximum(close, next_open),
+            np.where(
+                pos_change < 0,
+                np.minimum(close, next_open),
+                close
+            )
+        )
+        
+        next_trade_close = np.concatenate((which_price_to_trade[1:], np.array([which_price_to_trade[-1]])))
+        rets = np.log(next_trade_close) - np.log(which_price_to_trade)
+        
+        gain_loss = real_pos * rets - abs(pos_change) * self.fees_rate
+        pnl = gain_loss.cumsum()
+        
+        metrics = self._calculate_metrics(gain_loss, pnl)
+        return pnl, metrics
     
     def _calculate_metrics(self, gain_loss, pnl):
-        """计算绩效指标"""
+        """计算绩效指标（基于 log return）"""
+        gain_loss = np.asarray(gain_loss)
+        pnl = np.asarray(pnl)
+
+        # 单bar胜率与盈亏比
         win_rate_bar = np.sum(gain_loss > 0) / len(gain_loss) if len(gain_loss) > 0 else 0
         avg_gain_bar = np.mean(gain_loss[gain_loss > 0]) if np.any(gain_loss > 0) else 0
         avg_loss_bar = np.abs(np.mean(gain_loss[gain_loss < 0])) if np.any(gain_loss < 0) else 0
         profit_loss_ratio_bar = avg_gain_bar / avg_loss_bar if avg_loss_bar != 0 else np.inf
         
-        annual_return = np.mean(gain_loss) * self.annual_bars
-        sharpe_ratio = annual_return / (np.std(gain_loss) * np.sqrt(self.annual_bars)) if np.std(gain_loss) > 0 else 0
+        # 年化收益与夏普（gain_loss 视为每bar的 log return）
+        mean_ret = np.mean(gain_loss) if len(gain_loss) > 0 else 0.0
+        std_ret = np.std(gain_loss) if len(gain_loss) > 1 else 0.0
+        annual_return = mean_ret * self.annual_bars
+        sharpe_ratio = annual_return / (std_ret * np.sqrt(self.annual_bars)) if std_ret > 0 else 0.0
         
-        # 最大回撤
-        peak_values = np.maximum.accumulate(pnl)
-        peak_values = np.where(peak_values == 0, 1.0, peak_values)
-        drawdowns = (pnl - peak_values) / np.abs(peak_values)
-        max_drawdown = np.min(drawdowns) if len(drawdowns) > 0 else 0
+        # 将累积 log 收益还原为净值曲线（初始净值为 1）
+        equity = np.exp(pnl)
+        peak_equity = np.maximum.accumulate(equity)
+        # 避免除零
+        peak_equity = np.where(peak_equity == 0, 1.0, peak_equity)
+        drawdowns = equity / peak_equity - 1.0
+        max_drawdown = drawdowns.min() if len(drawdowns) > 0 else 0.0
         
-        # 卡尔玛比率
+        # Calmar Ratio：用年化 log return / |maxDD|
         if max_drawdown < -0.0001:
-            Calmar_Ratio = annual_return / abs(max_drawdown)
+            calmar_ratio = annual_return / abs(max_drawdown)
         else:
-            Calmar_Ratio = np.inf if annual_return > 0 else 0
+            calmar_ratio = np.inf if annual_return > 0 else 0.0
         
         metrics = {
             "Win Rate": win_rate_bar,
@@ -122,7 +206,7 @@ class BacktestEngine:
             "Annual Return": annual_return,
             "MAX_Drawdown": max_drawdown,
             "Sharpe Ratio": sharpe_ratio,
-            "Calmar Ratio": Calmar_Ratio
+            "Calmar Ratio": calmar_ratio
         }
         
         return metrics

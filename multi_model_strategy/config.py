@@ -23,8 +23,8 @@ class StrategyConfig:
             'max_factors': 50,  # 最多使用的因子数量
             
             # 三层结构相关开关
-            'enable_regime_layer': True,  # 是否启用 Regime / 环境层缩放
-            'enable_risk_layer': True,    # 是否启用 风控 & 拥挤度层缩放
+            'enable_regime_layer': False,  # 是否启用 Regime / 环境层缩放
+            'enable_risk_layer': False,    # 是否启用 风控 & 拥挤度层缩放
             
             # Regime / Risk 层使用的特征列
             'regime_trend_cols': None,    # 例如 ['regime_trend_96', 'trend_slope_96']

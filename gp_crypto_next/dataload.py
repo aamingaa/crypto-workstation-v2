@@ -1101,7 +1101,7 @@ def data_prepare_coarse_grain_rolling_offset(
             ]
 
 
-            print(f"check offset{offset}, z_raw_copy.index[0:20] : {z_raw_copy[['o','h','l','c']].index[0:20]}, coarse_bars.index[0:5] : {coarse_bars[['o','h','l','c']].index[0:5]}")
+            # print(f"check offset{offset}, z_raw_copy.index[0:20] : {z_raw_copy[['o','h','l','c']].index[0:20]}, coarse_bars.index[0:5] : {coarse_bars[['o','h','l','c']].index[0:5]}")
             # 设 coarse_grain_period = 2h, rolling_step = 15min, y_train_ret_period = 8
             # 则 prediction_horizon_td = y_train_ret_period * rolling_step = 8 * 15min = 2h
             #

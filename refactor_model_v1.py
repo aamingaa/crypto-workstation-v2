@@ -27,7 +27,7 @@ from multi_model_strategy import create_strategy_from_yaml
 
 # 定义因子表达式
 factor_expressions = [
-    'ta_dema_55(ta_dx_25(neg(h), ta_trix_8(h), ta_trix_21(ori_trix_21)))',
+    # 'ta_dema_55(ta_dx_25(neg(h), ta_trix_8(h), ta_trix_21(ori_trix_21)))',
     'ta_lr_slope_20(ts_delta_17(ori_ta_macd))',
 ]
 
@@ -81,7 +81,22 @@ strategy.run_full_pipeline(
 
 # 查看结果
 strategy.plot_results('Ensemble')
-strategy.plot_regime_and_risk('Ensemble')
+
+start_time = '2025-02-01 00:00:00'
+end_time = '2025-02-15 00:00:00'
+
+pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
+    start_time=start_time,
+    end_time=end_time,
+    model_name='Ensemble',   # 或其它模型名
+    data_range='test',       # 'train' 或 'test'
+)
+
+
+# strategy.plot_regime_and_risk('Ensemble')
+
+
+
 
 # 诊断分析
 # strategy.diagnose_label_health()
