@@ -4,10 +4,14 @@
 import sys
 from pathlib import Path
 
-# 确保项目根目录在 sys.path
+# 确保项目根目录和 gp_crypto_next 都在 sys.path
 project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+gp_crypto_dir = project_root / "gp_crypto_next"
+if str(gp_crypto_dir) not in sys.path:
+    sys.path.insert(0, str(gp_crypto_dir))
 
 print("="*60)
 print("测试模块导入")

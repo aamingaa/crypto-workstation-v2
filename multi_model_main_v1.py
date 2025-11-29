@@ -460,7 +460,7 @@ class QuantTradingStrategy:
                 #     timeframe=timeframe,
                 #     file_path=file_path
                 # )
-                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling(
+                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling_offset(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
                     coarse_grain_period=coarse_grain_period,

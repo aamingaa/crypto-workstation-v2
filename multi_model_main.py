@@ -201,7 +201,7 @@ class DataModule:
                  s.X_test, s.y_test, s.ret_test, s.feature_names,
                  s.open_train, s.open_test, s.close_train, s.close_test,
                  s.z_index, s.ohlc, s.y_p_train_origin, s.y_p_test_origin
-                 ) = dataload.data_prepare_coarse_grain_rolling(
+                 ) = dataload.data_prepare_coarse_grain_rolling_offset(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
                     coarse_grain_period=coarse_grain_period,
@@ -637,7 +637,7 @@ class QuantTradingStrategy:
                 rolling_step = self.data_config.get('rolling_step', '15min')
                 file_path = self.data_config.get('file_path', None)
                 
-                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling(
+                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling_offset(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
                     coarse_grain_period=coarse_grain_period,

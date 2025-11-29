@@ -5,10 +5,15 @@
 import sys
 from pathlib import Path
 
-# 确保 gp_crypto_next 在 sys.path 中
+# 确保项目根目录和 gp_crypto_next 都在 sys.path 中
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# 添加 gp_crypto_next 目录到 sys.path（解决其内部相对导入问题）
+gp_crypto_dir = project_root / "gp_crypto_next"
+if str(gp_crypto_dir) not in sys.path:
+    sys.path.insert(0, str(gp_crypto_dir))
 
 import gp_crypto_next.dataload as dataload
 
@@ -73,7 +78,7 @@ class DataModule:
                  self.X_test, self.y_test, self.ret_test, self.feature_names,
                  self.open_train, self.open_test, self.close_train, self.close_test,
                  self.z_index, self.ohlc, self.y_p_train_origin, self.y_p_test_origin
-                 ) = dataload.data_prepare_coarse_grain_rolling(
+                 ) = dataload.data_prepare_coarse_grain_rolling_offset(
                     sym, freq, start_date_train, end_date_train,
                     start_date_test, end_date_test,
                     coarse_grain_period=coarse_grain_period,

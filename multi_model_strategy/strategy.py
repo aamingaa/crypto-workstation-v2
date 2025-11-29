@@ -10,10 +10,15 @@ import pandas as pd
 import joblib
 import pickle
 
-# 确保项目路径在 sys.path
+# 确保项目路径和 gp_crypto_next 都在 sys.path
 project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
+
+# 添加 gp_crypto_next 目录到 sys.path（解决其内部相对导入问题）
+gp_crypto_dir = project_root / "gp_crypto_next"
+if str(gp_crypto_dir) not in sys.path:
+    sys.path.insert(0, str(gp_crypto_dir))
 
 from multi_model_strategy.config import StrategyConfig, DataConfig
 from multi_model_strategy.data_module import DataModule

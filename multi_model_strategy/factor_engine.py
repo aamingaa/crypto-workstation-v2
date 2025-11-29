@@ -2,8 +2,20 @@
 因子引擎模块
 负责因子评估、标准化、相关性筛选
 """
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
+
+# 确保项目路径和 gp_crypto_next 都在 sys.path
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+gp_crypto_dir = project_root / "gp_crypto_next"
+if str(gp_crypto_dir) not in sys.path:
+    sys.path.insert(0, str(gp_crypto_dir))
+
 from gp_crypto_next.expressionProgram import FeatureEvaluator
 from gp_crypto_next.functions import _function_map
 

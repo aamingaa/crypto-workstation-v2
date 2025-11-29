@@ -522,7 +522,7 @@ def get_feature_catalog() -> dict:
         'momentum': [
             'ori_ta_macd', 'close_macd', 'c_ta_tsf_5', 'h_ta_lr_angle_10', 'o_ta_lr_slope_10',
             'v_trix_8_obv', 'ori_trix_8', 'ori_trix_21', 'ori_trix_55', 'obv_lr_slope_20',
-            'ret_1', 'ret_4', 'ret_12', 'ret_24', 'ret_48', 'ret_96',
+            # 'ret_1', 'ret_4', 'ret_12', 'ret_24', 'ret_48', 'ret_96',
             'trend_slope_24', 
             'trend_slope_72', 
             'trend_slope_168',
