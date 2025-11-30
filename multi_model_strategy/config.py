@@ -36,10 +36,10 @@ class StrategyConfig:
             # Triple Barrier 集成相关
             'use_triple_barrier_label': False,   # 是否用 TB 收益替代固定周期收益做回归标签
             'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
-            'triple_barrier_max_holding': [0, 4],# [天, 小时] 最大持仓时间
+            'triple_barrier_max_holding': [0, 12],# [天, 小时] 最大持仓时间
             
             # Kelly bet size 模式
-            'use_kelly_bet_sizing': False,       # 是否使用基于 p、R 的 Kelly 仓位 sizing
+            'use_kelly_bet_sizing': False,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
             'kelly_fraction': 0.25,              # Fractional Kelly 系数 c（通常 0.1~0.5）
         }
     

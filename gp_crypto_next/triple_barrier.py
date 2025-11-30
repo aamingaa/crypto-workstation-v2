@@ -1,8 +1,15 @@
 import numpy as np
 import pandas as pd
-
+import time
 import plotly.express as px
 import plotly.graph_objects as go
+from tqdm.auto import tqdm
+
+# try:
+#     from tqdm.auto import tqdm
+# except Exception:  # tqdm 不可用时，退化为普通迭代器
+#     def tqdm(x, **kwargs):
+#         return x
 
 def add_vertical_barrier(t_events, close, days=0, hours=0, minutes=0, seconds=0):
     """
@@ -74,12 +81,23 @@ def forming_barriers(close, events, pt_sl, molecule):
     # Get events
     exit_series = events_['exit'].fillna(close.index[-1])
 
-    for loc, vertical_barrier in zip(exit_series.index, exit_series.values):
+    # for loc, vertical_barrier in zip(exit_series.index, exit_series.values):
+    #     closing_prices = close[loc: vertical_barrier]  # Path prices for a given trade
+    #     cum_returns = (closing_prices / close[loc] - 1) * events_.at[loc, 'side']  # Path returns
+    #     out.at[loc, 'sl'] = cum_returns[cum_returns < stop_loss[loc]].index.min()  # Earliest stop loss date
+    #     out.at[loc, 'pt'] = cum_returns[cum_returns > profit_taking[loc]].index.min()  # Earliest profit taking date
+    
+    # 使用 tqdm 显示进度条（若 tqdm 不可用则退化为普通迭代）
+    iterator = tqdm(
+        zip(exit_series.index, exit_series.values),
+        total=len(exit_series),
+        desc="Forming triple barriers"
+    )
+    for loc, vertical_barrier in iterator:
         closing_prices = close[loc: vertical_barrier]  # Path prices for a given trade
         cum_returns = (closing_prices / close[loc] - 1) * events_.at[loc, 'side']  # Path returns
         out.at[loc, 'sl'] = cum_returns[cum_returns < stop_loss[loc]].index.min()  # Earliest stop loss date
         out.at[loc, 'pt'] = cum_returns[cum_returns > profit_taking[loc]].index.min()  # Earliest profit taking date
-
     return out
 
 
@@ -126,9 +144,13 @@ def get_barrier(close, enter, pt_sl, max_holding, target=None, side=None):
     # Apply Triple Barrier
     first_touch_dates = forming_barriers(close, events, pt_sl_, events.index)
     
+    # 非向量化
+    # for ind in tqdm(events.index, total=len(events.index), desc="Applying triple barriers exit"):
+    #     events.at[ind, 'exit'] = first_touch_dates.loc[ind, :].dropna().min()
 
-    for ind in events.index:
-        events.at[ind, 'exit'] = first_touch_dates.loc[ind, :].dropna().min()
+    # 向量化：对每一行取非 NaN 的最早触达时间（exit/pt/sl 中的最小值）
+    first_touch_aligned = first_touch_dates.reindex(events.index)
+    events['exit'] = first_touch_aligned.min(axis=1, skipna=True)
 
     events_x = events.dropna(subset=['exit'])
 

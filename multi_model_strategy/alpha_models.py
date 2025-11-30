@@ -45,9 +45,9 @@ class AlphaModelTrainer:
         """
         print("正在训练模型...")
         
-        # 选择训练标签（这里假设已经传入了正确的y）
-        train_label = self.y_train
-        test_label = self.y_test
+        # 选择训练标签（这里假设已经传入了正确的y），并压平成一维
+        train_label = np.asarray(self.y_train).reshape(-1)
+        test_label = np.asarray(self.y_test).reshape(-1)
         
         # 1. 线性回归
         print("训练线性回归模型...")

@@ -276,10 +276,18 @@ class QuantTradingStrategy:
         max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
         
         # 生成 TB 标签
-        close_series = pd.Series(
-            data=self.data_module.ohlc[:, 3],
-            index=pd.to_datetime(self.z_index)
-        )
+        # 优先使用 DataModule 中对齐好的 ohlc DataFrame（包含完整样本期的价格）
+        ohlc = self.data_module.ohlc
+        if 'close' in ohlc.columns:
+            close_series = ohlc['close'].astype(float)
+        elif 'c' in ohlc.columns:
+            close_series = ohlc['c'].astype(float)
+        else:
+            # 回退：使用第一列作为收盘价
+            close_series = ohlc.iloc[:, 0].astype(float)
+
+        # 确保索引为日期时间类型
+        close_series.index = pd.to_datetime(close_series.index)
         
         rolling_window = self.data_config.get('rolling_window', 2000)
         target_volatility = close_series.pct_change().rolling(

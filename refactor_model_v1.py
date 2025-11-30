@@ -55,23 +55,6 @@ strategy = create_strategy_from_yaml(
 )
 
 
-
-# from multi_model_strategy import (
-#     DataModule,
-#     FactorEngine,
-#     AlphaModelTrainer
-# )
-
-# data_module = DataModule(data_config, strategy_config)
-# data_module.load()
-
-# factor_engine = FactorEngine(...)
-# factor_engine.evaluate_expressions()
-
-# alpha_trainer = AlphaModelTrainer(...)
-# alpha_trainer.train_all_models()
-
-
 # 运行完整流程
 strategy.run_full_pipeline(
     weight_method='equal',       # 'equal' 或 'sharpe'
@@ -83,7 +66,7 @@ strategy.run_full_pipeline(
 strategy.plot_results('Ensemble')
 
 start_time = '2025-02-01 00:00:00'
-end_time = '2025-02-15 00:00:00'
+end_time = '2025-02-10 00:00:00'
 
 pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
     start_time=start_time,
