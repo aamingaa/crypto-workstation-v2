@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import platform
 import matplotlib as mpl
+import os
 
 def setup_chinese_font_for_mac():
     """
@@ -52,13 +53,14 @@ class Visualizer:
     可视化工具：回测结果、Regime/Risk 诊断
     """
     
-    def __init__(self, z_index, close_train, close_test):
+    def __init__(self, total_factor_file_dir:str, z_index, close_train, close_test):
         """
         Args:
             z_index (np.ndarray): 时间索引
             close_train (np.ndarray): 训练集收盘价
             close_test (np.ndarray): 测试集收盘价
         """
+        self.total_factor_file_dir = str(total_factor_file_dir)
         self.z_index = z_index
         self.close_train = close_train
         self.close_test = close_test
@@ -159,7 +161,12 @@ class Visualizer:
                       fontsize=9)
         
         plt.tight_layout()
-        plt.show(block=False)
+        # plt.show(block=False)
+        file_path = f"{self.total_factor_file_dir}/model_drawings/backtest_results.png"
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        plt.savefig(file_path)
+        plt.close()
+        # plt.show(block=False)
     
     def plot_regime_and_risk_scalers(self, predictions, regime_scaler_train, regime_scaler_test,
                                      risk_scaler_train, risk_scaler_test, model_name='Ensemble'):

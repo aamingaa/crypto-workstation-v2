@@ -62,9 +62,9 @@ strategy.run_full_pipeline(
     enable_factor_selection=False
 )
 
-# 查看结果
+# 查看结果并保存图像
 strategy.plot_results('Ensemble')
-
+# plt.savefig('ensemble_backtest.png', dpi=200, bbox_inches='tight')
 start_time = '2025-02-01 00:00:00'
 end_time = '2025-02-10 00:00:00'
 

@@ -68,14 +68,18 @@ class DataModule:
         read_frequency = self.data_config.get('read_frequency', 'monthly')
         timeframe = self.data_config.get('timeframe', None)
         data_source = self.data_config.get('data_source', 'kline')
+        coarse_grain_period = self.data_config.get('coarse_grain_period', '2h')
+        feature_lookback_bars = self.data_config.get('feature_lookback_bars', 8)
+        rolling_step = self.data_config.get('rolling_step', '15min')
+        file_path = self.data_config.get('file_path', None)
+        y_train_ret_period = self.strategy_config['return_period']
         
+        self.total_factor_file_dir = f"{sym}_{freq}_{y_train_ret_period}_{start_date_train}_{end_date_train}_{start_date_test}_{end_date_test}"
+
         try:
             if str(data_source).lower() == 'coarse_grain':
                 print(f"使用粗粒度特征方法 (coarse_grain)")
-                coarse_grain_period = self.data_config.get('coarse_grain_period', '2h')
-                feature_lookback_bars = self.data_config.get('feature_lookback_bars', 8)
-                rolling_step = self.data_config.get('rolling_step', '15min')
-                file_path = self.data_config.get('file_path', None)
+            
                 
                 (self.X_all, self.X_train, self.y_train, self.ret_train,
                  self.X_test, self.y_test, self.ret_test, self.feature_names,
@@ -88,7 +92,7 @@ class DataModule:
                     coarse_grain_period=coarse_grain_period,
                     feature_lookback_bars=feature_lookback_bars,
                     rolling_step=rolling_step,
-                    y_train_ret_period=self.strategy_config['return_period'],
+                    y_train_ret_period=y_train_ret_period,
                     rolling_w=rolling_w,
                     output_format='ndarry',
                     data_dir=data_dir,
@@ -148,5 +152,9 @@ class DataModule:
             'y_p_test_origin': self.y_p_test_origin,
             'train_index': self.train_index,
             'test_index': self.test_index,
+            'total_factor_file_dir': self.total_factor_file_dir,
         }
+    
+    def get_total_factor_file_dir(self) -> str:
+        return str(self.total_factor_file_dir)
 

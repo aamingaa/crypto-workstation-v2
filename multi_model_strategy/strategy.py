@@ -10,6 +10,7 @@ import pandas as pd
 import joblib
 import pickle
 import matplotlib.pyplot as plt
+import os
 
 # 确保项目路径和 gp_crypto_next 都在 sys.path
 project_root = Path(__file__).resolve().parent.parent
@@ -227,6 +228,7 @@ class QuantTradingStrategy:
         
         # 初始化可视化和诊断工具（需要价格数据）
         self.visualizer = Visualizer(
+            str(self.data_module.get_total_factor_file_dir()),
             data_dict['z_index'],
             data_dict['close_train'],
             data_dict['close_test']
@@ -562,7 +564,14 @@ class QuantTradingStrategy:
         ax1.legend(lines, labels, loc='upper left')
 
         fig.tight_layout()
-        plt.show()
+
+        file_path = f"{self.data_module.get_total_factor_file_dir()}/model_drawings/subperiod/{start_ts}_{end_ts}/backtest_results.png"
+        
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        plt.savefig(file_path)
+        
+        plt.close()
+        # plt.show()
 
         return pnl_sub, metrics_sub
     
