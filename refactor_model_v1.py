@@ -55,19 +55,22 @@ strategy = create_strategy_from_yaml(
 )
 
 
-best = strategy.run_param_search(
-    signal_grid=[60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0],         # 只搜 3 个阈值
-    pt_sl_grid=[[2.0, 2.0], [3.0, 2.0]],               # 固定 pt_sl，不搜索
-    max_holding_grid=[[0, 8], [0, 10], [0,12], [0,14], [0, 16]],             # 固定 max_holding
+param_search_result = strategy.run_param_search(
+    # signal_grid=[60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0],         # 只搜 3 个阈值
+    signal_grid=[60.0, 65.0, 70.0],
+    pt_sl_grid=[[2.0, 2.0]],               # 固定 pt_sl，不搜索
+    max_holding_grid=[[0, 12]],             # 固定 max_holding
+    # max_holding_grid=[[0, 8], [0, 10], [0,12], [0,14], [0, 16]], 
     metric='Sharpe Ratio',                 # 按 Calmar 选
     data_range='test',                     # 用 test 段评估
     model_name='Ensemble',                 # 看 Ensemble 的表现
     weight_method='equal',
     normalize_method=None,
+    save_plots=True,
     enable_factor_selection=False,
 )
 
-print(best)
+print(param_search_result)
 
 # 运行完整流程
 # strategy.run_full_pipeline(

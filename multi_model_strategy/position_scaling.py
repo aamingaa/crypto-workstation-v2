@@ -295,7 +295,8 @@ class KellyBetSizer:
     
     def apply_kelly_sizing(self, predictions, base_model_name='Ensemble'):
         """
-        应用 Kelly bet sizing 到所有模型预测
+        应用 Kelly bet sizing 到指定基准模型的预测（通常是 Ensemble），
+        其它单模型预测保持不变，便于比较各模型自身性能。
         
         Args:
             predictions (dict): 所有模型的预测结果
@@ -339,12 +340,11 @@ class KellyBetSizer:
         side_train[np.isnan(side_train)] = 0.0
         side_test[np.isnan(side_test)] = 0.0
         
-        # 应用到所有模型
-        for model_name in predictions.keys():
-            train_pos_new = side_train * size_train
-            test_pos_new = side_test * size_test
-            predictions[model_name]['train'] = train_pos_new
-            predictions[model_name]['test'] = test_pos_new
+        # 仅应用到基准模型（例如 Ensemble），其它模型保持原始仓位，便于比较差异
+        train_pos_new = side_train * size_train
+        test_pos_new = side_test * size_test
+        predictions[base_model_name]['train'] = train_pos_new
+        predictions[base_model_name]['test'] = test_pos_new
         
         return predictions
 
