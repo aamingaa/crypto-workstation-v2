@@ -110,13 +110,13 @@
 可以把你现在的策略理解为三层：
 
 * A. Alpha / 信号层（决定“做多/做空”和大致强度）
-* 主要用：ret_*, trend_slope_*, donchian_pos_*, 各类 TA 动量/反转因子、价量因子。
-* 由 gplearn + 多模型（LR/XGB/LGB 等）拟合 y_train（标准化 label），输出 pos_model_t。
+  * 主要用：ret_*, trend_slope_*, donchian_pos_*, 各类 TA 动量/反转因子、价量因子。
+  * 由 gplearn + 多模型（LR/XGB/LGB 等）拟合 y_train（标准化 label），输出 pos_model_t。
 * B. Regime & 风格层（决定“什么时候信号更可信 / 压仓”）
-* 用：regime_trend_*, regime_vol_*, regime_liquidity_*。
-* 典型做法：在高波 regime、无趋势 regime 下降低信号权重或关闭部分风格。
+  * 用：regime_trend_*, regime_vol_*, regime_liquidity_*。
+  * 典型做法：在高波 regime、无趋势 regime 下降低信号权重或关闭部分风格。
 * C. 风控 & 拥挤度层（决定杠杆和极端风险暴露）
-* 用：oi_zscore_24, oi_change_24, toptrader_oi_skew(_abs), taker_imbalance(_vol), 后续还可以加 funding/basis。
+  * 用：oi_zscore_24, oi_change_24, toptrader_oi_skew(_abs), taker_imbalance(_vol), 后续还可以加 funding/basis。
 * 典型做法：构造一个 leverage_risk_score，用来缩放最终仓位、限制单边暴露，在极端拥挤区间防止“明知道很挤还满仓冲进去”。
 
 ## 测试思路
@@ -207,9 +207,5 @@
 * impact: amihud_illiq_*, gap_*, taker_imbalance_vol, lgp_shortcut_illiq_6 等；
 * crowding: oi_zscore_24, oi_change_24, toptrader_oi_skew(_abs), toptrader_count_skew 等；
 * regime: regime_trend_96, regime_vol_24, regime_liquidity_168。
-
-
-
-
 
 如何判断我的特征是能够赚钱的呢，或者赚钱能力的上限？以及是特征不够好还是预测模型不够好？

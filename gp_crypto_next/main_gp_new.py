@@ -151,7 +151,14 @@ class GPAnalyzer:
         """
         if not self.data_initialized:
             if str(self.data_source).lower() == 'coarse_grain':
-                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin= dataload.data_prepare_coarse_grain_rolling_offset(
+                # self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc, self.y_p_train_origin, self.y_p_test_origin
+                
+                (self.X_all, self.X_train, self.y_train, self.ret_train,
+                 self.X_test, self.y_test, self.ret_test, self.feature_names,
+                 self.open_train, self.open_test, self.close_train, self.close_test,
+                 self.z_index, self.ohlc, self.y_p_train_origin, self.y_p_test_origin,
+                 self.train_index, self.test_index
+                 ) = dataload.data_prepare_coarse_grain_rolling_offset(
                     self.sym, self.freq, self.start_date_train, self.end_date_train,
                     self.start_date_test, self.end_date_test, 
                     coarse_grain_period=getattr(self, 'coarse_grain_period', '2h'),
