@@ -158,7 +158,7 @@ class QuantTradingStrategy:
     # ========== 主流程 ==========
     
 
-    def run_full_pipeline(self, weight_method='equal', normalize_method=None,
+    def run_full_pipeline(self, is_pre_load=False, weight_method='equal', normalize_method=None,
                          enable_factor_selection=False):
         """
         运行完整策略流程
@@ -187,7 +187,8 @@ class QuantTradingStrategy:
         print("="*60)
         
         # 1. 数据加载
-        self._load_data()
+        if is_pre_load == False:
+            self._load_data()
         
         # 2. 因子表达式加载
         if not self._use_expressions_mode and self.factor_csv_path:
@@ -851,6 +852,8 @@ class QuantTradingStrategy:
         weight_method='equal',
         normalize_method=None,
         enable_factor_selection=False,
+        save_plots=False,
+        plot_subdir='param_search',
     ):
         """
         简单网格搜索：在给定参数网格上跑完整策略流程，并基于样本外指标选出最优组合。
@@ -864,6 +867,8 @@ class QuantTradingStrategy:
             model_name (str or None): 使用哪个模型的回测指标，默认读取配置或 'Ensemble'
             weight_method, normalize_method, enable_factor_selection:
                 传给 run_full_pipeline 的其它参数
+            save_plots (bool): 若为 True，则为每个网格组合单独保存一张回测图
+            plot_subdir (str): 保存网格搜索图片的子目录名（位于 total_factor_file_dir 下）
         
         Returns:
             dict: 包含最佳参数与对应指标的结果字典
@@ -895,6 +900,9 @@ class QuantTradingStrategy:
         best_params = None
         best_summary = None
         
+        self._load_data()
+        is_pre_load = True
+    
         # 3) 遍历所有组合
         for sig, pt_sl, max_h in itertools.product(signal_grid, pt_sl_grid, max_holding_grid):
             # 兼容 pt_sl / max_h 为 tuple 的情况
@@ -910,10 +918,22 @@ class QuantTradingStrategy:
             
             # 跑完整流程（包括 TB / 模型 / Kelly / Regime / 回测）
             self.run_full_pipeline(
+                is_pre_load=is_pre_load,
                 weight_method=weight_method,
                 normalize_method=normalize_method,
                 enable_factor_selection=enable_factor_selection,
             )
+            
+            # 可选：为当前参数组合保存一张单独的回测图
+            if save_plots and self.visualizer is not None:
+                try:
+                    orig_dir = self.visualizer.total_factor_file_dir
+                    tag = f"sig{sig}_pt{pt_sl_list[0]}_sl{pt_sl_list[1]}_mh{max_h_list[0]}d{max_h_list[1]}h"
+                    new_dir = os.path.join(orig_dir, plot_subdir, tag)
+                    self.visualizer.total_factor_file_dir = new_dir
+                    self.plot_results(model_name or 'Ensemble')
+                finally:
+                    self.visualizer.total_factor_file_dir = orig_dir
             
             if model_name not in self.backtest_results:
                 print(f"  ⚠️ 模型 {model_name} 不在回测结果中，跳过此组合")
@@ -955,6 +975,7 @@ class QuantTradingStrategy:
             print("=" * 60)
             
             self.run_full_pipeline(
+                is_pre_load=is_pre_load,
                 weight_method=weight_method,
                 normalize_method=normalize_method,
                 enable_factor_selection=enable_factor_selection,

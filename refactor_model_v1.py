@@ -55,25 +55,39 @@ strategy = create_strategy_from_yaml(
 )
 
 
-# 运行完整流程
-strategy.run_full_pipeline(
-    weight_method='equal',       # 'equal' 或 'sharpe'
-    normalize_method=None,       # None, 'simple', 'robust', 'zscore'
-    enable_factor_selection=False
+best = strategy.run_param_search(
+    signal_grid=[60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0],         # 只搜 3 个阈值
+    pt_sl_grid=[[2.0, 2.0], [3.0, 2.0]],               # 固定 pt_sl，不搜索
+    max_holding_grid=[[0, 8], [0, 10], [0,12], [0,14], [0, 16]],             # 固定 max_holding
+    metric='Sharpe Ratio',                 # 按 Calmar 选
+    data_range='test',                     # 用 test 段评估
+    model_name='Ensemble',                 # 看 Ensemble 的表现
+    weight_method='equal',
+    normalize_method=None,
+    enable_factor_selection=False,
 )
+
+print(best)
+
+# 运行完整流程
+# strategy.run_full_pipeline(
+#     weight_method='equal',       # 'equal' 或 'sharpe'
+#     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
+#     enable_factor_selection=False
+# )
 
 # 查看结果并保存图像
-strategy.plot_results('Ensemble')
-# plt.savefig('ensemble_backtest.png', dpi=200, bbox_inches='tight')
-start_time = '2025-02-01 00:00:00'
-end_time = '2025-02-10 00:00:00'
+# strategy.plot_results('Ensemble')
+# # plt.savefig('ensemble_backtest.png', dpi=200, bbox_inches='tight')
+# start_time = '2025-02-01 00:00:00'
+# end_time = '2025-02-10 00:00:00'
 
-pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
-    start_time=start_time,
-    end_time=end_time,
-    model_name='Ensemble',   # 或其它模型名
-    data_range='test',       # 'train' 或 'test'
-)
+# pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
+#     start_time=start_time,
+#     end_time=end_time,
+#     model_name='Ensemble',   # 或其它模型名
+#     data_range='test',       # 'train' 或 'test'
+# )
 
 
 # strategy.plot_regime_and_risk('Ensemble')
@@ -130,64 +144,3 @@ strategy = QuantTradingStrategy.from_yaml(
 strategy.run_full_pipeline(weight_method='equal')
 strategy.plot_results('Ensemble')
 """
-
-
-# ========== 高级用法：使用 Triple Barrier + Kelly Bet Sizing ==========
-"""
-from multi_model_strategy import create_strategy_from_expressions
-
-factors = ['ta_rsi_14(close)', 'ta_ema_20(close)']
-
-strategy = create_strategy_from_expressions(
-    factors,
-    sym='ETHUSDT',
-    train_dates=('2025-01-01', '2025-02-01'),
-    test_dates=('2025-02-01', '2025-03-01'),
-    # 启用 Triple Barrier
-    use_triple_barrier_label=True,
-    triple_barrier_pt_sl=[2, 2],
-    triple_barrier_max_holding=[0, 4],
-    # 启用 Kelly Bet Sizing
-    use_kelly_bet_sizing=True,
-    kelly_fraction=0.25,
-)
-
-strategy.run_full_pipeline()
-strategy.plot_results('Ensemble')
-"""
-
-
-# ========== 模块化使用：手动控制每个步骤 ==========
-"""
-from multi_model_strategy import (
-    QuantTradingStrategy,
-    DataConfig,
-    StrategyConfig
-)
-
-# 1. 创建策略实例
-data_config = DataConfig.build_simple(
-    sym='ETHUSDT',
-    freq='15m',
-    train_dates=('2025-01-01', '2025-02-01'),
-    test_dates=('2025-02-01', '2025-03-01')
-)
-
-config = StrategyConfig.get_default_config()
-config['max_factors'] = 10
-
-strategy = QuantTradingStrategy(None, data_config, config)
-strategy.factor_expressions = ['ta_rsi_14(close)', 'ta_ema_20(close)']
-strategy._use_expressions_mode = True
-
-# 2. 手动执行各步骤
-strategy._load_data()
-strategy._evaluate_factors(normalize_method=None, enable_factor_selection=False)
-strategy._train_and_predict(weight_method='equal')
-strategy._apply_position_scaling()
-strategy._run_backtest()
-
-# 3. 查看结果
-strategy.plot_results('Ensemble')
-"""
-
