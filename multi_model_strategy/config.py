@@ -41,6 +41,28 @@ class StrategyConfig:
             # Kelly bet size 模式
             'use_kelly_bet_sizing': False,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
             'kelly_fraction': 0.25,              # Fractional Kelly 系数 c（通常 0.1~0.5）
+            
+            # Base 模型信号离散化（enter 过滤）相关
+            # 使用训练集预测绝对值的分位数作为阈值，仅在“强信号” bar 上持仓
+            # 例如 70 表示使用 |pred_train| 的 70% 分位数作为阈值
+            # 设为 None 可关闭该离散化逻辑，保持连续仓位
+            'signal_strength_pct': 70.0,
+
+            # 参数搜索（网格搜索）相关配置
+            # 是否在单独调用 run_param_search 时启用这些默认网格
+            # 注意：不会自动在 run_full_pipeline 中触发，仅在你显式调用时使用
+            'param_search_signal_strength_grid': [50.0, 60.0, 70.0, 80.0, 90.0],
+            # pt_sl 网格，元素为 [pt, sl]
+            'param_search_triple_barrier_pt_sl_grid': [[1.0, 2.0], [2.0, 2.0], [2.0, 3.0]],
+            # 最大持仓时间网格，元素为 [days, hours]
+            'param_search_triple_barrier_max_holding_grid': [[0, 4], [0, 8], [0, 12]],
+            # 评价指标与范围
+            # metric 可选：'Sharpe Ratio', 'Calmar Ratio', 'Annual Return'
+            'param_search_metric': 'Sharpe Ratio',
+            # 在 train/test 哪一段上评估超参数
+            'param_search_data_range': 'test',
+            # 使用哪个模型名称做评估，默认 Ensemble
+            'param_search_model_name': 'Ensemble',
         }
     
     @staticmethod

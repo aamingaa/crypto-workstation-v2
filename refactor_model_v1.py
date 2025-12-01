@@ -68,12 +68,12 @@ strategy.plot_results('Ensemble')
 start_time = '2025-02-01 00:00:00'
 end_time = '2025-02-10 00:00:00'
 
-pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
-    start_time=start_time,
-    end_time=end_time,
-    model_name='Ensemble',   # 或其它模型名
-    data_range='test',       # 'train' 或 'test'
-)
+# pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
+#     start_time=start_time,
+#     end_time=end_time,
+#     model_name='Ensemble',   # 或其它模型名
+#     data_range='test',       # 'train' 或 'test'
+# )
 
 
 # strategy.plot_regime_and_risk('Ensemble')

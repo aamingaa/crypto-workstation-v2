@@ -238,10 +238,20 @@ class KellyBetSizer:
         meta_train = meta_arr[:train_len]
         meta_test = meta_arr[train_len:total_len]
         
+        # 仅在有 trade-level meta-label 的样本上训练（过滤 NaN）
+        mask_train = np.isfinite(meta_train)
+        if not np.any(mask_train):
+            print("⚠️ Meta 模型训练中没有有效的 trade-level 标签，跳过 Kelly 胜率估计")
+            return self
+        
+        X_train_sub = np.asarray(X_train)[mask_train]
+        meta_train_sub = meta_train[mask_train]
+        
         clf = LogisticRegression(max_iter=1000)
-        clf.fit(X_train, meta_train)
+        clf.fit(X_train_sub, meta_train_sub)
         self.meta_model = clf
         
+        # 在完整时间轴上预测 P(meta=1)，包括非开仓 bar（用于连续 Kelly 缩放）
         self.meta_p_train = clf.predict_proba(X_train)[:, 1]
         self.meta_p_test = clf.predict_proba(X_test)[:, 1]
         

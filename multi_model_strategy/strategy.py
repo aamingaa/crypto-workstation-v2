@@ -4,6 +4,7 @@
 """
 import sys
 from pathlib import Path
+import itertools
 import yaml
 import numpy as np
 import pandas as pd
@@ -156,6 +157,7 @@ class QuantTradingStrategy:
     
     # ========== 主流程 ==========
     
+
     def run_full_pipeline(self, weight_method='equal', normalize_method=None,
                          enable_factor_selection=False):
         """
@@ -165,6 +167,20 @@ class QuantTradingStrategy:
             weight_method (str): 'equal' 或 'sharpe'
             normalize_method (str or None): 因子标准化方法（None=不标准化）
             enable_factor_selection (bool): 是否启用因子筛选
+            
+            总结一下三者的“职责分工”
+                Triple-barrier（bar 级，_apply_triple_barrier_labels）
+                对象：所有 bar。
+                用途：给 base 回归模型造连续 label 
+                ​
+                不关心：你实际是不是在这个 bar 下单。
+                模型 train/predict + 离散化（_discretize_base_positions）
+                对象：所有 bar 的预测。
+                用途：把连续预测变成“真实下单/不下单”的仓位序列，定义交易规则。
+
+                Trade-level TB（_build_trade_level_barriers_from_positions）
+                对象：只有“0→非0”这些实际开仓事件。
+                用途：评估每一笔真实交易的表现，生成 meta-label 和 Kelly 所需的 p,R
         """
         print("="*60)
         print("开始运行完整的量化策略流程（整合GP因子）")
@@ -277,26 +293,11 @@ class QuantTradingStrategy:
         pt_sl = self.config.get('triple_barrier_pt_sl', [2, 2])
         max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
         
-        # 生成 TB 标签
-        # 优先使用 DataModule 中对齐好的 ohlc DataFrame（包含完整样本期的价格）
-        ohlc = self.data_module.ohlc
-        if 'close' in ohlc.columns:
-            close_series = ohlc['close'].astype(float)
-        elif 'c' in ohlc.columns:
-            close_series = ohlc['c'].astype(float)
-        else:
-            # 回退：使用第一列作为收盘价
-            close_series = ohlc.iloc[:, 0].astype(float)
-
-        # 确保索引为日期时间类型
-        close_series.index = pd.to_datetime(close_series.index)
+        # 生成 TB 标签（bar 级）：使用所有 bar 作为潜在事件
+        close_series, target_volatility = self._prepare_triple_barrier_price_and_vol()
         
-        rolling_window = self.data_config.get('rolling_window', 2000)
-        target_volatility = close_series.pct_change().rolling(
-            window=min(rolling_window, len(close_series)//2)
-        ).std()
-        target_volatility = target_volatility.fillna(method='bfill')
-        
+        # 这里的 Triple Barrier 仍然使用「每个 bar 均为潜在事件」的 enter，
+        # 仅用于构造回归标签（y_train / y_test），不直接用于 Kelly / meta-label。
         self.barrier_results = get_barrier(
             close=close_series,
             enter=close_series.index,
@@ -306,8 +307,6 @@ class QuantTradingStrategy:
             side=pd.Series(1.0, index=close_series.index)
         )
         
-        self.meta_labels = get_metalabel(self.barrier_results)
-        
         # 替换 label
         barrier_ret = self.barrier_results['ret'].values
         train_len = len(self.y_train)
@@ -316,7 +315,174 @@ class QuantTradingStrategy:
         self.ret_train = self.y_train.flatten()
         self.ret_test = self.y_test.flatten()
         
-        print(f"Triple Barrier 标签应用完成")
+        print(f"Triple Barrier 标签应用完成（基于所有 bar 的标签，用于回归模型）")
+    
+    def _prepare_triple_barrier_price_and_vol(self):
+        """
+        提取用于 Triple Barrier 的价格序列与目标波动率。
+        
+        Returns:
+            tuple(pd.Series, pd.Series): (close_series, target_volatility)
+        """
+        # 优先使用 DataModule 中对齐好的 ohlc DataFrame（包含完整样本期的价格）
+        ohlc = self.data_module.ohlc
+        if 'close' in ohlc.columns:
+            close_series = ohlc['close'].astype(float)
+        elif 'c' in ohlc.columns:
+            close_series = ohlc['c'].astype(float)
+        else:
+            # 回退：使用第一列作为收盘价
+            close_series = ohlc.iloc[:, 0].astype(float)
+        
+        # 确保索引为日期时间类型
+        close_series.index = pd.to_datetime(close_series.index)
+        
+        rolling_window = self.data_config.get('rolling_window', 2000)
+        target_volatility = close_series.pct_change().rolling(
+            window=min(rolling_window, len(close_series) // 2)
+        ).std()
+        target_volatility = target_volatility.fillna(method='bfill')
+        
+        return close_series, target_volatility
+    
+    def _build_trade_level_barriers_from_positions(self):
+        """
+        基于「离散化后的实际仓位开仓时刻」构建 trade-level Triple Barrier 与 meta-label，
+        主要用于 Kelly / meta-labeling，而不再覆盖回归模型的 y_train / y_test。
+        """
+        if not self.predictions:
+            print("当前还没有模型预测结果，无法基于仓位构建 Triple Barrier")
+            return
+        
+        pt_sl = self.config.get('triple_barrier_pt_sl', [2, 2])
+        max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
+        
+        # 1) 价格与波动率（与 _apply_triple_barrier_labels 保持一致）
+        close_series, target_volatility = self._prepare_triple_barrier_price_and_vol()
+        
+        # 2) 构造完整时间索引（train + test），与模型预测对齐
+        train_len = len(self.y_train)
+        test_len = len(self.y_test)
+        
+        if getattr(self.data_module, 'train_index', None) is not None and \
+           getattr(self.data_module, 'test_index', None) is not None:
+            idx_train = pd.to_datetime(self.data_module.train_index)
+            idx_test = pd.to_datetime(self.data_module.test_index)
+            full_index = idx_train.append(idx_test)
+        else:
+            full_index = pd.to_datetime(self.z_index[:train_len + test_len])
+        
+        # 3) 选择基准模型的离散仓位（优先使用 Ensemble）
+        if 'Ensemble' in self.predictions:
+            base_name = 'Ensemble'
+        else:
+            base_name = next(iter(self.predictions.keys()))
+        
+        base_train = np.asarray(self.predictions[base_name]['train']).flatten()
+        base_test = np.asarray(self.predictions[base_name]['test']).flatten()
+        pos_all = np.concatenate([base_train, base_test])
+        
+        if len(pos_all) != len(full_index):
+            min_len = min(len(pos_all), len(full_index))
+            pos_all = pos_all[:min_len]
+            full_index = full_index[:min_len]
+        
+        pos_series = pd.Series(pos_all, index=full_index)
+        
+        # 将仓位与价格对齐在共同索引上
+        common_index = close_series.index.intersection(pos_series.index)
+        if len(common_index) == 0:
+            print("⚠️ 仓位时间索引与价格索引没有交集，无法构建 trade-level Triple Barrier")
+            return
+        
+        pos_series = pos_series.reindex(common_index).fillna(0.0)
+        close_aligned = close_series.reindex(common_index)
+        target_aligned = target_volatility.reindex(common_index).fillna(method='bfill')
+        
+        # 4) 找到「从 0 → 非 0」的开仓时刻作为 enter，方向由仓位符号决定
+        prev_pos = pos_series.shift(1).fillna(0.0)
+        enter_mask = (prev_pos == 0.0) & (pos_series != 0.0)
+        enter_times = pos_series.index[enter_mask]
+        
+        if len(enter_times) == 0:
+            print("⚠️ 离散仓位中没有任何 0→非0 的开仓事件，无法构建 trade-level Triple Barrier")
+            return
+        
+        side_series = np.sign(pos_series.loc[enter_times])
+        
+        # 5) 基于真实开仓事件构建 Triple Barrier
+        barrier_trades = get_barrier(
+            close=close_aligned,
+            enter=enter_times,
+            pt_sl=pt_sl,
+            max_holding=max_holding,
+            target=target_aligned,
+            side=side_series
+        )
+        self.barrier_results = barrier_trades
+        
+        # 6) 构建 meta-label，并对齐到完整时间轴（train+test），
+        #    非开仓 bar 上的 meta-label 设为 NaN，Kelly 训练时仅使用有标签的样本。
+        meta_series = get_metalabel(barrier_trades)  # index 为事件起点（enter_times 子集，且 ret!=0）
+        meta_full = pd.Series(np.nan, index=common_index)
+        meta_full.loc[meta_series.index] = meta_series.values
+        meta_full = meta_full.reindex(full_index)
+        self.meta_labels = meta_full.values
+        
+        print(f"Trade-level Triple Barrier 构建完成：开仓笔数={len(barrier_trades)}")
+    
+    def _discretize_base_positions(self):
+        """
+        基于预测强度对 base 模型信号做简单阈值离散化：
+        只在“强信号” bar 上持仓，其余视为不交易。
+        """
+        if not self.predictions:
+            return
+        
+        strength_pct = self.config.get('signal_strength_pct', None)
+        if strength_pct is None:
+            print("不做信号阈值离散化（signal_strength_pct=None）")
+            return
+        
+        try:
+            strength_pct = float(strength_pct)
+        except (TypeError, ValueError):
+            print(f"signal_strength_pct 配置非法: {self.config.get('signal_strength_pct')}, 跳过离散化")
+            return
+        
+        if not (0.0 < strength_pct < 100.0):
+            print(f"signal_strength_pct={strength_pct} 不在 (0, 100) 内，跳过离散化")
+            return
+        
+        # 选择基准模型（优先使用 Ensemble）
+        if 'Ensemble' in self.predictions:
+            base_name = 'Ensemble'
+        else:
+            base_name = next(iter(self.predictions.keys()))
+        
+        base_train = np.asarray(self.predictions[base_name]['train']).flatten()
+        abs_train = np.abs(base_train)
+        abs_train = abs_train[np.isfinite(abs_train)]
+        
+        if abs_train.size == 0:
+            print("训练预测为空或全部为 NaN，无法计算信号阈值，跳过离散化")
+            return
+        
+        thr = np.percentile(abs_train, strength_pct)
+        print(f"应用信号阈值离散化：使用 {base_name} 训练预测绝对值 "
+              f"{strength_pct:.1f}% 分位数作为阈值 {thr:.6f}")
+        
+        def _to_pos(arr):
+            arr = np.asarray(arr).flatten()
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+            sign = np.sign(arr)
+            strong = (np.abs(arr) >= thr).astype(float)
+            return sign * strong
+        
+        # 对所有模型的 train/test 仓位统一应用离散化
+        for model_name, pred in self.predictions.items():
+            self.predictions[model_name]['train'] = _to_pos(pred['train'])
+            self.predictions[model_name]['test'] = _to_pos(pred['test'])
     
     def _evaluate_factors(self, normalize_method, enable_factor_selection):
         """步骤4：评估因子"""
@@ -388,14 +554,17 @@ class QuantTradingStrategy:
         
         self.predictions = self.alpha_trainer.get_predictions()
         self.ensemble_weights = self.alpha_trainer.ensemble_weights
-    
+        
+        # 基于预测强度做一次统一的信号阈值离散化（改进 base enter 逻辑）
+        self._discretize_base_positions()
+        
     def _apply_kelly_sizing(self):
         """步骤6（可选）：Kelly bet sizing"""
         print("ℹ️ 启用 Lopez 风格 Kelly bet sizing")
         
-        if self.barrier_results is None or self.meta_labels is None:
-            print("⚠️ Kelly 需要 Triple Barrier，自动生成...")
-            self._apply_triple_barrier_labels()
+        # 基于「离散化后的 base 仓位」构建 trade-level Triple Barrier 与 meta-label
+        # 用于估计胜率 p 与盈亏比 R
+        self._build_trade_level_barriers_from_positions()
         
         kelly_sizer = KellyBetSizer(self.config)
         
@@ -668,4 +837,130 @@ class QuantTradingStrategy:
     def get_performance_summary(self):
         """获取绩效汇总"""
         return self.backtest_engine.get_performance_summary()
+
+    # ========== 参数搜索（网格搜索）接口 ==========
+    
+    def run_param_search(
+        self,
+        signal_grid=None,
+        pt_sl_grid=None,
+        max_holding_grid=None,
+        metric=None,
+        data_range=None,
+        model_name=None,
+        weight_method='equal',
+        normalize_method=None,
+        enable_factor_selection=False,
+    ):
+        """
+        简单网格搜索：在给定参数网格上跑完整策略流程，并基于样本外指标选出最优组合。
+        
+        Args:
+            signal_grid (list[float] or None): signal_strength_pct 网格（分位数），None 则读取配置
+            pt_sl_grid (list[list[float]] or None): Triple Barrier pt_sl 网格，例如 [[1,2],[2,2]]
+            max_holding_grid (list[list[int]] or None): Triple Barrier max_holding 网格，例如 [[0,4],[0,8]]
+            metric (str or None): 评价指标键，默认读取配置，可选 'Sharpe Ratio'、'Calmar Ratio'、'Annual Return'
+            data_range (str or None): 'train' 或 'test'，用于评估超参数
+            model_name (str or None): 使用哪个模型的回测指标，默认读取配置或 'Ensemble'
+            weight_method, normalize_method, enable_factor_selection:
+                传给 run_full_pipeline 的其它参数
+        
+        Returns:
+            dict: 包含最佳参数与对应指标的结果字典
+        """
+        # 1) 读取默认网格与参数
+        cfg = self.config
+        signal_grid = signal_grid or cfg.get('param_search_signal_strength_grid', [cfg.get('signal_strength_pct', 70.0)])
+        pt_sl_grid = pt_sl_grid or cfg.get('param_search_triple_barrier_pt_sl_grid', [cfg.get('triple_barrier_pt_sl', [2.0, 2.0])])
+        max_holding_grid = max_holding_grid or cfg.get('param_search_triple_barrier_max_holding_grid', [cfg.get('triple_barrier_max_holding', [0, 12])])
+        
+        metric = metric or cfg.get('param_search_metric', 'Sharpe Ratio')
+        data_range = data_range or cfg.get('param_search_data_range', 'test')
+        model_name = model_name or cfg.get('param_search_model_name', 'Ensemble')
+        
+        metric_key = str(metric)
+        data_key = 'train' if data_range == 'train' else 'test'
+        
+        print("=" * 60)
+        print(f"开始参数网格搜索：metric={metric_key}, data_range={data_key}, model={model_name}")
+        print(f"signal_grid={signal_grid}")
+        print(f"pt_sl_grid={pt_sl_grid}")
+        print(f"max_holding_grid={max_holding_grid}")
+        print("=" * 60)
+        
+        # 2) 备份原始配置
+        orig_config = dict(self.config)
+        
+        best_score = None
+        best_params = None
+        best_summary = None
+        
+        # 3) 遍历所有组合
+        for sig, pt_sl, max_h in itertools.product(signal_grid, pt_sl_grid, max_holding_grid):
+            # 兼容 pt_sl / max_h 为 tuple 的情况
+            pt_sl_list = list(pt_sl)
+            max_h_list = list(max_h)
+            
+            self.config['signal_strength_pct'] = float(sig)
+            self.config['triple_barrier_pt_sl'] = pt_sl_list
+            self.config['triple_barrier_max_holding'] = max_h_list
+            
+            print(f"\n>>> 尝试参数组合: signal_strength_pct={sig}, "
+                  f"pt_sl={pt_sl_list}, max_holding={max_h_list}")
+            
+            # 跑完整流程（包括 TB / 模型 / Kelly / Regime / 回测）
+            self.run_full_pipeline(
+                weight_method=weight_method,
+                normalize_method=normalize_method,
+                enable_factor_selection=enable_factor_selection,
+            )
+            
+            if model_name not in self.backtest_results:
+                print(f"  ⚠️ 模型 {model_name} 不在回测结果中，跳过此组合")
+                continue
+            
+            metrics_dict = self.backtest_results[model_name].get(f"{data_key}_metrics", {})
+            if metric_key not in metrics_dict:
+                print(f"  ⚠️ 指标 {metric_key} 不在 {data_key}_metrics 中，实际 keys={list(metrics_dict.keys())}")
+                continue
+            
+            score = float(metrics_dict[metric_key])
+            print(f"  -> {data_key} {metric_key} = {score:.4f}")
+            
+            if (best_score is None) or (score > best_score):
+                best_score = score
+                best_params = {
+                    'signal_strength_pct': float(sig),
+                    'triple_barrier_pt_sl': pt_sl_list,
+                    'triple_barrier_max_holding': max_h_list,
+                }
+                # 记录当前最佳的简单摘要
+                best_summary = {
+                    'metric': metric_key,
+                    'data_range': data_key,
+                    'score': best_score,
+                    'params': best_params,
+                }
+        
+        # 4) 还原原始配置，并用最佳参数再跑一遍，得到最终策略状态
+        self.config = orig_config
+        if best_params is not None:
+            self.config['signal_strength_pct'] = best_params['signal_strength_pct']
+            self.config['triple_barrier_pt_sl'] = best_params['triple_barrier_pt_sl']
+            self.config['triple_barrier_max_holding'] = best_params['triple_barrier_max_holding']
+            
+            print("\n" + "=" * 60)
+            print(f"参数搜索结束，最佳组合：{best_params} | {data_key} {metric_key}={best_score:.4f}")
+            print("使用最佳参数重新运行完整策略流程，用于后续分析与保存...")
+            print("=" * 60)
+            
+            self.run_full_pipeline(
+                weight_method=weight_method,
+                normalize_method=normalize_method,
+                enable_factor_selection=enable_factor_selection,
+            )
+        else:
+            print("⚠️ 参数搜索未找到任何有效组合，保持原始配置与结果。")
+        
+        return best_summary
 
