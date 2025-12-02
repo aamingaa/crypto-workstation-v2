@@ -1203,7 +1203,8 @@ def data_prepare_coarse_grain_rolling_offset(
         factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
         return np.nan_to_num(factor_value).flatten()
     
-    df_samples['ret_rolling_zscore'] = norm_ret(df_samples['return_f'].values, window=rolling_w)
+    df_samples['ret_rolling_zscore'] = norm(df_samples['return_p'].values, window=rolling_w)
+    # df_samples['ret_rolling_zscore'] = norm_ret(df_samples['return_f'].values, window=rolling_w)
     remove_warmup_rows = True
             
     # ========== 删除rolling窗口未满的行（可选） ==========
