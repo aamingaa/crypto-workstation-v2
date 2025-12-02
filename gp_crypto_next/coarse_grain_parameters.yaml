@@ -8,7 +8,7 @@ y_train_ret_period: 8    # 预测未来1个粗粒度周期的收益（1×2h=2小
 start_date_train: '2022-01-01'
 end_date_train: '2025-01-01'
 start_date_test: '2025-01-01'
-end_date_test: '2025-06-01'
+end_date_test: '2025-07-01'
 timeframe: '15m'
 # data_dir: '/Volumes/Ext-Disk/data/futures/um/monthly/klines/ETHUSDT/15m'
 data_dir: '/Users/aming/data/ETHUSDT/15m'
@@ -53,34 +53,15 @@ execution_mode: 'once'   # 'once' or 'loop'
 #   n_jobs: -1
 
 
-gp_settings:
-  population_size: 200
-  hall_of_fame: 100
-  n_components: 50
-  generations: 2
-  tournament_size: 8
-  const_range: null
-  init_depth: [1, 3]
-  metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
-  parsimony_coefficient: 0.0005
-  p_crossover: 0.8
-  p_subtree_mutation: 0.02
-  p_hoist_mutation: 0.02
-  p_point_mutation: 0.02
-  p_point_replace: 0.5
-  corrcoef_threshold: 0.8
-  n_jobs: -1
-
-
 # gp_settings:
-#   population_size: 20000
-#   hall_of_fame: 10000
-#   n_components: 5000
-#   generations: 3
-#   tournament_size: 888
+#   population_size: 200
+#   hall_of_fame: 100
+#   n_components: 50
+#   generations: 2
+#   tournament_size: 8
 #   const_range: null
-#   init_depth: [2, 5]
-#   metric: 'sharpe_fixed_threshold'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold'
+#   init_depth: [1, 3]
+#   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
 #   parsimony_coefficient: 0.0005
 #   p_crossover: 0.8
 #   p_subtree_mutation: 0.02
@@ -89,4 +70,23 @@ gp_settings:
 #   p_point_replace: 0.5
 #   corrcoef_threshold: 0.8
 #   n_jobs: -1
+
+
+gp_settings:
+  population_size: 20000
+  hall_of_fame: 10000
+  n_components: 5000
+  generations: 3
+  tournament_size: 888
+  const_range: null
+  init_depth: [1, 3]
+  metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold'
+  parsimony_coefficient: 0.0005
+  p_crossover: 0.8
+  p_subtree_mutation: 0.02
+  p_hoist_mutation: 0.02
+  p_point_mutation: 0.02
+  p_point_replace: 0.5
+  corrcoef_threshold: 0.8
+  n_jobs: -1
 
