@@ -1,0 +1,18 @@
+,expression
+0,"ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), inv(l)))"
+1,"TA_SAR(ts_max_5(vol), ts_skew_40(ta_trima_21(o_ta_lr_slope_10)))"
+2,ta_lr_angle_20(ts_prod_17(ts_max_10(h_ta_lr_angle_10)))
+3,"ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), ts_skew_40(ts_argrange_5(c))))"
+4,ts_delta_3(tanh(ta_trima_21(o_ta_lr_slope_10)))
+5,ts_argmin_20(ta_cmo_25(ta_trix_55(v_trix_8_obv)))
+6,ts_argmax_20(o_ta_lr_slope_10)
+7,ta_dema_55(ts_std_20(o))
+8,tanh(ta_lr_intercept_20(ta_dema_21(donchian_pos_200)))
+9,ta_mom_25(o_ta_lr_slope_10)
+10,ta_mom_25(ts_lag_8(h_ta_lr_angle_10))
+11,"ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), neg(o)))"
+12,"ta_rocr_14(ta_lr_intercept_10(ta_beta_10(trend_slope_168, up_ratio_24)))"
+13,ta_trima_55(ts_skew_40(o))
+14,"ta_minus_di_25(ts_max_20(ts_skew_10(trend_slope_72)), neg(o), TS_CORR_40(ta_cmo_25(c), ta_ema_8(c)))"
+15,"ta_beta_20(obv_lr_slope_20, add(o, donchian_pos_200))"
+16,"ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), TA_BOP(trend_slope_168, v_trix_8_obv, donchian_pos_50, ori_trix_21)))"

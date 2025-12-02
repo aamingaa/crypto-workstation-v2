@@ -27,8 +27,23 @@ from multi_model_strategy import create_strategy_from_yaml
 
 # 定义因子表达式
 factor_expressions = [
-    # 'ta_dema_55(ta_dx_25(neg(h), ta_trix_8(h), ta_trix_21(ori_trix_21)))',
-    'ta_lr_slope_20(ts_delta_17(ori_ta_macd))',
+    'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), inv(l)))'
+    ,'TA_SAR(ts_max_5(vol), ts_skew_40(ta_trima_21(o_ta_lr_slope_10)))'
+    ,'ta_lr_angle_20(ts_prod_17(ts_max_10(h_ta_lr_angle_10)))'
+    ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), ts_skew_40(ts_argrange_5(c))))'
+    ,'ts_delta_3(tanh(ta_trima_21(o_ta_lr_slope_10)))'
+    ,'ts_argmin_20(ta_cmo_25(ta_trix_55(v_trix_8_obv)))'
+    ,'ts_argmax_20(o_ta_lr_slope_10)'
+    ,'ta_dema_55(ts_std_20(o))'
+    ,'tanh(ta_lr_intercept_20(ta_dema_21(donchian_pos_200)))'
+    ,'ta_mom_25(o_ta_lr_slope_10)'
+    ,'ta_mom_25(ts_lag_8(h_ta_lr_angle_10))'
+    ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), neg(o)))'
+    ,'ta_rocr_14(ta_lr_intercept_10(ta_beta_10(trend_slope_168, up_ratio_24)))'
+    ,'ta_trima_55(ts_skew_40(o))'
+    ,'ta_minus_di_25(ts_max_20(ts_skew_10(trend_slope_72)), neg(o), TS_CORR_40(ta_cmo_25(c), ta_ema_8(c)))'
+    ,'ta_beta_20(obv_lr_slope_20, add(o, donchian_pos_200))'
+    ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), TA_BOP(trend_slope_168, v_trix_8_obv, donchian_pos_50, ori_trix_21)))'
 ]
 
 # 创建策略
@@ -55,42 +70,42 @@ strategy = create_strategy_from_yaml(
 )
 
 
-param_search_result = strategy.run_param_search(
-    # signal_grid=[60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0],         # 只搜 3 个阈值
-    signal_grid=[60.0, 65.0, 70.0],
-    pt_sl_grid=[[2.0, 2.0]],               # 固定 pt_sl，不搜索
-    max_holding_grid=[[0, 12]],             # 固定 max_holding
-    # max_holding_grid=[[0, 8], [0, 10], [0,12], [0,14], [0, 16]], 
-    metric='Sharpe Ratio',                 # 按 Calmar 选
-    data_range='test',                     # 用 test 段评估
-    model_name='Ensemble',                 # 看 Ensemble 的表现
-    weight_method='equal',
-    normalize_method=None,
-    save_plots=True,
-    enable_factor_selection=False,
-)
+# param_search_result = strategy.run_param_search(
+#     # signal_grid=[60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0],         # 只搜 3 个阈值
+#     signal_grid=[60.0, 65.0, 70.0],
+#     pt_sl_grid=[[2.0, 2.0]],               # 固定 pt_sl，不搜索
+#     max_holding_grid=[[0, 12]],             # 固定 max_holding
+#     # max_holding_grid=[[0, 8], [0, 10], [0,12], [0,14], [0, 16]], 
+#     metric='Sharpe Ratio',                 # 按 Calmar 选
+#     data_range='test',                     # 用 test 段评估
+#     model_name='Ensemble',                 # 看 Ensemble 的表现
+#     weight_method='equal',
+#     normalize_method=None,
+#     save_plots=True,
+#     enable_factor_selection=False,
+# )
 
-print(param_search_result)
+# print(param_search_result)
 
 # 运行完整流程
-# strategy.run_full_pipeline(
-#     weight_method='equal',       # 'equal' 或 'sharpe'
-#     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
-#     enable_factor_selection=False
-# )
+strategy.run_full_pipeline(
+    weight_method='equal',       # 'equal' 或 'sharpe'
+    normalize_method=None,       # None, 'simple', 'robust', 'zscore'
+    enable_factor_selection=False
+)
 
 # 查看结果并保存图像
-# strategy.plot_results('Ensemble')
-# # plt.savefig('ensemble_backtest.png', dpi=200, bbox_inches='tight')
-# start_time = '2025-02-01 00:00:00'
-# end_time = '2025-02-10 00:00:00'
+strategy.plot_results('Ensemble')
 
-# pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
-#     start_time=start_time,
-#     end_time=end_time,
-#     model_name='Ensemble',   # 或其它模型名
-#     data_range='test',       # 'train' 或 'test'
-# )
+start_time = '2025-02-01 00:00:00'
+end_time = '2025-02-10 00:00:00'
+
+pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
+    start_time=start_time,
+    end_time=end_time,
+    model_name='Ensemble',   # 或其它模型名
+    data_range='test',       # 'train' 或 'test'
+)
 
 
 # strategy.plot_regime_and_risk('Ensemble')

@@ -34,19 +34,19 @@ class StrategyConfig:
             'risk_funding_cols': None,    # 例如 ['funding_zscore_24h']
             
             # Triple Barrier 集成相关
-            'use_triple_barrier_label': True,   # 是否用 TB 收益替代固定周期收益做回归标签
+            'use_triple_barrier_label': False,   # 是否用 TB 收益替代固定周期收益做回归标签
             'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
             'triple_barrier_max_holding': [0, 12],# [天, 小时] 最大持仓时间
             
             # Kelly bet size 模式
-            'use_kelly_bet_sizing': True,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
+            'use_kelly_bet_sizing': False,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
             'kelly_fraction': 0.25,              # Fractional Kelly 系数 c（通常 0.1~0.5）
             
             # Base 模型信号离散化（enter 过滤）相关
             # 使用训练集预测绝对值的分位数作为阈值，仅在“强信号” bar 上持仓
             # 例如 70 表示使用 |pred_train| 的 70% 分位数作为阈值
             # 设为 None 可关闭该离散化逻辑，保持连续仓位
-            'signal_strength_pct': 70,
+            'signal_strength_pct': None,
 
             # 参数搜索（网格搜索）相关配置
             # 是否在单独调用 run_param_search 时启用这些默认网格
