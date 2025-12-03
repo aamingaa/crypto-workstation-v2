@@ -34,12 +34,15 @@ class StrategyConfig:
             'risk_funding_cols': None,    # 例如 ['funding_zscore_24h']
             
             # Triple Barrier 集成相关
-            'use_triple_barrier_label': False,   # 是否用 TB 收益替代固定周期收益做回归标签
+            'use_triple_barrier_label': True,   # 是否用 TB 收益替代固定周期收益做回归标签
             'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
             'triple_barrier_max_holding': [0, 12],# [天, 小时] 最大持仓时间
+            # Lopez CUSUM 事件相关参数（用于 Triple Barrier 事件选择）
+            'tb_cusum_h': 3.0,                  # CUSUM 阈值系数，越大事件越少
+            'tb_min_events': 500,               # CUSUM 最少事件数，低于该值退回使用所有 bar
             
             # Kelly bet size 模式
-            'use_kelly_bet_sizing': False,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
+            'use_kelly_bet_sizing': None,        # 是否使用基于 p、R 的 Kelly 仓位 sizing
             'kelly_fraction': 0.25,              # Fractional Kelly 系数 c（通常 0.1~0.5）
             
             # Base 模型信号离散化（enter 过滤）相关

@@ -32,8 +32,8 @@ from multi_model_strategy.backtest_engine import BacktestEngine
 from multi_model_strategy.visualization import Visualizer
 from multi_model_strategy.diagnostics import DiagnosticTools
 
-# Triple Barrier
-from gp_crypto_next.triple_barrier import get_barrier, get_metalabel
+# Triple Barrier（Lopez de Prado 风格）
+from gp_crypto_next.triple_barrier import get_barrier, get_metalabel, cusum_filter
 
 
 class QuantTradingStrategy:
@@ -60,7 +60,17 @@ class QuantTradingStrategy:
         data_config = DataConfig.build_from_yaml(yaml_config)
         
         config = StrategyConfig.get_default_config()
+        # 从 YAML 中同步部分策略相关参数
         config['return_period'] = yaml_config.get('y_train_ret_period', 1)
+        # Triple Barrier / CUSUM 相关
+        if 'triple_barrier_pt_sl' in yaml_config:
+            config['triple_barrier_pt_sl'] = yaml_config['triple_barrier_pt_sl']
+        if 'triple_barrier_max_holding' in yaml_config:
+            config['triple_barrier_max_holding'] = yaml_config['triple_barrier_max_holding']
+        if 'tb_cusum_h' in yaml_config:
+            config['tb_cusum_h'] = yaml_config['tb_cusum_h']
+        if 'tb_min_events' in yaml_config:
+            config['tb_min_events'] = yaml_config['tb_min_events']
         if strategy_config:
             config.update(strategy_config)
         
@@ -294,27 +304,71 @@ class QuantTradingStrategy:
         pt_sl = self.config.get('triple_barrier_pt_sl', [2, 2])
         max_holding = self.config.get('triple_barrier_max_holding', [0, 4])
         
-        # 生成 TB 标签（bar 级）：使用所有 bar 作为潜在事件
+        # 生成 TB 标签所需的价格与目标波动率
         close_series, target_volatility = self._prepare_triple_barrier_price_and_vol()
         
-        # 这里的 Triple Barrier 仍然使用「每个 bar 均为潜在事件」的 enter，
-        # 仅用于构造回归标签（y_train / y_test），不直接用于 Kelly / meta-label。
+        # ========== 事件选择：Lopez 原书 CUSUM 版本 ==========
+        # 1) 计算 log price 的增量，用于 CUSUM
+        log_price = np.log(close_series.astype(float))
+        diff = log_price.diff().dropna()
+        if len(diff) == 0:
+            # 极端兜底：价格序列过短或常数，退回每个 bar 作为事件
+            enter_points = close_series.index
+            print("⚠️ CUSUM 无有效 diff，退回使用所有 bar 作为事件")
+        else:
+            # 2) 阈值 h：默认为 h * std(diff)，h 可通过 config 调整
+            h = float(self.config.get('tb_cusum_h', 3.0))
+            threshold = h * diff.std()
+            if threshold <= 0:
+                threshold = diff.abs().median()
+            
+            enter_points = cusum_filter(log_price, threshold)
+            min_events = int(self.config.get('tb_min_events', 500))
+            if len(enter_points) < min_events:
+                print(f"⚠️ CUSUM 事件数过少({len(enter_points)}<{min_events})，退回使用所有 bar 作为事件")
+                enter_points = close_series.index
+        
+        print(f"Triple Barrier 使用事件数: {len(enter_points)} / 总bar数: {len(close_series)}")
+        
+        # 3) 调用 Triple Barrier：仅用于构造回归标签（y_train / y_test），不用于 Kelly / meta-label
         self.barrier_results = get_barrier(
             close=close_series,
-            enter=close_series.index,
+            enter=enter_points,
             pt_sl=pt_sl,
             max_holding=max_holding,
             target=target_volatility,
-            side=pd.Series(1.0, index=close_series.index)
+            side=pd.Series(1.0, index=enter_points)
         )
         
         # 替换 label
-        barrier_ret = self.barrier_results['ret'].values
-        train_len = len(self.y_train)
-        self.y_train = barrier_ret[:train_len].reshape(-1, 1)
-        self.y_test = barrier_ret[train_len:train_len+len(self.y_test)].reshape(-1, 1)
-        self.ret_train = self.y_train.flatten()
-        self.ret_test = self.y_test.flatten()
+        barrier_ret = self.barrier_results['ret']
+        train_idx = getattr(self.data_module, 'train_index', None)
+        test_idx = getattr(self.data_module, 'test_index', None)
+
+        if train_idx is not None and test_idx is not None:
+            # 使用时间索引对齐（coarse_grain 模式）
+            y_train_tb = barrier_ret.reindex(train_idx)
+            y_test_tb = barrier_ret.reindex(test_idx)
+
+            if y_train_tb.isna().any() or y_test_tb.isna().any():
+                raise ValueError("Triple Barrier 标签在 train_index/test_index 上存在 NaN，请检查时间对齐。")
+
+            self.y_train = y_train_tb.values.reshape(-1, 1)
+            self.y_test = y_test_tb.values.reshape(-1, 1)
+        else:
+            # 兼容 kline 等旧模式：按长度切分
+            barrier_ret_values = barrier_ret.values
+            n_train = len(self.y_train)
+            n_test = len(self.y_test)
+            if len(barrier_ret_values) < n_train + n_test:
+                raise ValueError(
+                    f"Triple Barrier 返回长度 {len(barrier_ret_values)} < 训练+测试长度 {n_train + n_test}"
+                )
+            self.y_train = barrier_ret_values[:n_train].reshape(-1, 1)
+            self.y_test = barrier_ret_values[n_train:n_train + n_test].reshape(-1, 1)
+        
+        self.ret_train = self.y_train.ravel()
+        self.ret_test = self.y_test.ravel()
         
         print(f"Triple Barrier 标签应用完成（基于所有 bar 的标签，用于回归模型）")
     
@@ -775,6 +829,62 @@ class QuantTradingStrategy:
             self.diagnostic_tools.diagnose_label_health(
                 self.barrier_results, self.meta_labels
             )
+        return self
+    
+    def diagnose_tb_events(self, max_points: int = 2000):
+        """
+        简单诊断 Triple Barrier 事件分布：
+        在价格曲线上叠加 CUSUM 事件点，直观查看事件是否过稀/过密。
+        
+        Args:
+            max_points (int): 若价格点过多，最多采样展示的点数（避免图太密）
+        """
+        if self.data_module is None:
+            print("数据模块尚未初始化，无法诊断 TB 事件")
+            return self
+        
+        close_series, _ = self._prepare_triple_barrier_price_and_vol()
+        if len(close_series) == 0:
+            print("收盘价序列为空，无法诊断 TB 事件")
+            return self
+        
+        # 使用与 _apply_triple_barrier_labels 相同的 CUSUM 规则
+        log_price = np.log(close_series.astype(float))
+        diff = log_price.diff().dropna()
+        if len(diff) == 0:
+            print("⚠️ CUSUM 无有效 diff，事件退回为所有 bar")
+            enter_points = close_series.index
+        else:
+            h = float(self.config.get('tb_cusum_h', 3.0))
+            threshold = h * diff.std()
+            if threshold <= 0:
+                threshold = diff.abs().median()
+            enter_points = cusum_filter(log_price, threshold)
+        
+        print(f"[TB 诊断] 总 bar 数: {len(close_series)}, CUSUM 事件数: {len(enter_points)}")
+        
+        # 采样避免图太密
+        if len(close_series) > max_points:
+            step = len(close_series) // max_points
+            close_plot = close_series.iloc[::step]
+        else:
+            close_plot = close_series
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(close_plot.index, close_plot.values, label='Close', alpha=0.7)
+        
+        # 仅在采样范围内绘制事件点
+        enter_in_range = [t for t in enter_points if t in close_plot.index]
+        if len(enter_in_range) > 0:
+            plt.scatter(enter_in_range,
+                        close_plot.loc[enter_in_range],
+                        color='red', s=10, label='CUSUM Events')
+        
+        plt.title("Triple Barrier CUSUM Events vs Price")
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+        
         return self
     
     def diagnose_factor_ic(self, data_range='train', top_n=20):
