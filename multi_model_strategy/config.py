@@ -34,7 +34,7 @@ class StrategyConfig:
             'risk_funding_cols': None,    # 例如 ['funding_zscore_24h']
             
             # Triple Barrier 集成相关
-            'use_triple_barrier_label': True,   # 是否用 TB 收益替代固定周期收益做回归标签
+            'use_triple_barrier_label': None,   # 是否用 TB 收益替代固定周期收益做回归标签
             'triple_barrier_pt_sl': [2, 2],      # [止盈倍数, 止损倍数]
             'triple_barrier_max_holding': [0, 12],# [天, 小时] 最大持仓时间
             # Lopez CUSUM 事件相关参数（用于 Triple Barrier 事件选择）

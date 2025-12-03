@@ -27,23 +27,18 @@ from multi_model_strategy import create_strategy_from_yaml
 
 # 定义因子表达式
 factor_expressions = [
-    'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), inv(l)))'
-    # ,'TA_SAR(ts_max_5(vol), ts_skew_40(ta_trima_21(o_ta_lr_slope_10)))'
-    # ,'ta_lr_angle_20(ts_prod_17(ts_max_10(h_ta_lr_angle_10)))'
-    # ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), ts_skew_40(ts_argrange_5(c))))'
-    # ,'ts_delta_3(tanh(ta_trima_21(o_ta_lr_slope_10)))'
-    # ,'ts_argmin_20(ta_cmo_25(ta_trix_55(v_trix_8_obv)))'
-    # ,'ts_argmax_20(o_ta_lr_slope_10)'
-    # ,'ta_dema_55(ts_std_20(o))'
-    # ,'tanh(ta_lr_intercept_20(ta_dema_21(donchian_pos_200)))'
-    # ,'ta_mom_25(o_ta_lr_slope_10)'
-    # ,'ta_mom_25(ts_lag_8(h_ta_lr_angle_10))'
-    # ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), neg(o)))'
-    # ,'ta_rocr_14(ta_lr_intercept_10(ta_beta_10(trend_slope_168, up_ratio_24)))'
-    # ,'ta_trima_55(ts_skew_40(o))'
-    # ,'ta_minus_di_25(ts_max_20(ts_skew_10(trend_slope_72)), neg(o), TS_CORR_40(ta_cmo_25(c), ta_ema_8(c)))'
-    # ,'ta_beta_20(obv_lr_slope_20, add(o, donchian_pos_200))'
-    # ,'ta_dema_55(ta_aroonosc_14(ta_cmo_14(ori_trix_8), TA_BOP(trend_slope_168, v_trix_8_obv, donchian_pos_50, ori_trix_21)))'
+    'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+    ,'ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))'
+    ,'ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd)))'
+    ,'ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))'
+    ,'ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))'
+    ,'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
+    ,'ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50))))'
+    ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+    ,'ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))'
+    ,'TA_SAR(close_macd, ta_dema_55(vol))'
+    ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+    ,'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
 ]
 
 # 创建策略
@@ -97,8 +92,8 @@ strategy.run_full_pipeline(
 # 查看结果并保存图像
 strategy.plot_results('Ensemble')
 
-start_time = '2025-02-01 00:00:00'
-end_time = '2025-02-10 00:00:00'
+start_time = '2025-08-01 00:00:00'
+end_time = '2025-08-30 00:00:00'
 
 pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
     start_time=start_time,
