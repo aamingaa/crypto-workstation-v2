@@ -58,10 +58,10 @@ class AlphaModelTrainer:
         print(f"  截距: {lr_model.intercept_}")
         
         # 2. Ridge回归
-        print("训练Ridge回归模型...")
-        ridge_model = Ridge(alpha=0.2, fit_intercept=True)
-        ridge_model.fit(self.X_train, train_label)
-        self.models['Ridge'] = ridge_model
+        # print("训练Ridge回归模型...")
+        # ridge_model = Ridge(alpha=0.2, fit_intercept=True)
+        # ridge_model.fit(self.X_train, train_label)
+        # self.models['Ridge'] = ridge_model
         
         # 3. Lasso回归
         print("训练Lasso回归模型...")

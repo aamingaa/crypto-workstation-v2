@@ -37,8 +37,6 @@ factor_expressions = [
     ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
     ,'ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))'
     ,'TA_SAR(close_macd, ta_dema_55(vol))'
-    ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
-    ,'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
 ]
 
 # 创建策略
@@ -84,7 +82,7 @@ strategy = create_strategy_from_yaml(
 
 # 运行完整流程
 strategy.run_full_pipeline(
-    weight_method='Ensemble',       # 'equal' 或 'sharpe'
+    weight_method='equal',       # 'equal' 或 'sharpe'
     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
     enable_factor_selection=False
 )
