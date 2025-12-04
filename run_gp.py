@@ -18,7 +18,7 @@ def main() -> None:
     yaml_file_path = project_root / "gp_crypto_next" / "coarse_grain_parameters.yaml"
 
     analyzer = GPAnalyzer(str(yaml_file_path))
-    # analyzer.run()
+    analyzer.run()
 
     # # Option2 - 直接评估现有因子库中的所有因子， 执行metric打分 （可以执行另外的一组metric，重新定义另一个metric_dict即可）。不需要运行gplearn.
     # analyzer.evaluate_existing_factors()
