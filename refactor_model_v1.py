@@ -84,7 +84,7 @@ strategy = create_strategy_from_yaml(
 
 # 运行完整流程
 strategy.run_full_pipeline(
-    weight_method='equal',       # 'equal' 或 'sharpe'
+    weight_method='Ensemble',       # 'equal' 或 'sharpe'
     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
     enable_factor_selection=False
 )
@@ -98,7 +98,7 @@ end_time = '2025-08-30 00:00:00'
 pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
     start_time=start_time,
     end_time=end_time,
-    model_name='Ensemble',   # 或其它模型名
+    model_name='Ensemble',   # 或其它模型名 sharpe Ensemble
     data_range='test',       # 'train' 或 'test'
 )
 

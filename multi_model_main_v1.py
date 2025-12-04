@@ -924,64 +924,64 @@ class QuantTradingStrategy:
         # self.models['Ridge'] = ridge_model
         
         # 3. Lasso回归
-        # print("训练Lasso回归模型...")
-        # lasso_model = LassoCV(fit_intercept=True, max_iter=5000)
-        # lasso_model.fit(self.X_train, train_label.flatten())
-        # self.models['Lasso'] = lasso_model
+        print("训练Lasso回归模型...")
+        lasso_model = LassoCV(fit_intercept=True, max_iter=5000)
+        lasso_model.fit(self.X_train, train_label.flatten())
+        self.models['Lasso'] = lasso_model
         
-        # # 4. XGBoost
-        # print("训练XGBoost模型...")
-        # X_train_df = pd.DataFrame(self.X_train, columns=self.selected_factors)
-        # y_train_series = pd.Series(train_label.flatten())
-        # X_test_df = pd.DataFrame(self.X_test, columns=self.selected_factors)
-        # y_test_series = pd.Series(test_label.flatten())
+        # 4. XGBoost
+        print("训练XGBoost模型...")
+        X_train_df = pd.DataFrame(self.X_train, columns=self.selected_factors)
+        y_train_series = pd.Series(train_label.flatten())
+        X_test_df = pd.DataFrame(self.X_test, columns=self.selected_factors)
+        y_test_series = pd.Series(test_label.flatten())
         
-        # xgb_model = XGBRegressor(
-        #     max_depth=3,
-        #     learning_rate=0.1,
-        #     n_estimators=100,
-        #     objective='reg:squarederror',
-        #     random_state=0,
-        #     early_stopping_rounds=20
-        # )
+        xgb_model = XGBRegressor(
+            max_depth=3,
+            learning_rate=0.1,
+            n_estimators=100,
+            objective='reg:squarederror',
+            random_state=0,
+            early_stopping_rounds=20
+        )
         
-        # xgb_model.fit(
-        #     X_train_df, y_train_series,
-        #     eval_set=[(X_test_df, y_test_series)],
-        #     verbose=False
-        # )
+        xgb_model.fit(
+            X_train_df, y_train_series,
+            eval_set=[(X_test_df, y_test_series)],
+            verbose=False
+        )
         
-        # self.models['XGBoost'] = xgb_model
+        self.models['XGBoost'] = xgb_model
         
-        # # 5. LightGBM
-        # print("训练LightGBM模型...")
-        # lgb_params = {
-        #     'objective': 'regression',
-        #     'metric': 'rmse',
-        #     'boosting': 'gbdt',
-        #     'learning_rate': 0.054,
-        #     'max_depth': 3,
-        #     'num_leaves': 32,
-        #     'min_data_in_leaf': 50,
-        #     'feature_fraction': 0.5,
-        #     'bagging_fraction': 0.5,
-        #     'lambda_l1': 0.05,
-        #     'lambda_l2': 120,
-        #     'verbose': -1
-        # }
+        # 5. LightGBM
+        print("训练LightGBM模型...")
+        lgb_params = {
+            'objective': 'regression',
+            'metric': 'rmse',
+            'boosting': 'gbdt',
+            'learning_rate': 0.054,
+            'max_depth': 3,
+            'num_leaves': 32,
+            'min_data_in_leaf': 50,
+            'feature_fraction': 0.5,
+            'bagging_fraction': 0.5,
+            'lambda_l1': 0.05,
+            'lambda_l2': 120,
+            'verbose': -1
+        }
         
-        # lgb_train = lgb.Dataset(X_train_df, y_train_series)
-        # lgb_val = lgb.Dataset(X_test_df, y_test_series, reference=lgb_train)
+        lgb_train = lgb.Dataset(X_train_df, y_train_series)
+        lgb_val = lgb.Dataset(X_test_df, y_test_series, reference=lgb_train)
         
-        # lgb_model = lgb.train(
-        #     lgb_params,
-        #     lgb_train,
-        #     num_boost_round=500,
-        #     valid_sets=lgb_val,
-        #     callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
-        # )
+        lgb_model = lgb.train(
+            lgb_params,
+            lgb_train,
+            num_boost_round=500,
+            valid_sets=lgb_val,
+            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
+        )
         
-        # self.models['LightGBM'] = lgb_model
+        self.models['LightGBM'] = lgb_model
         
         print("所有模型训练完成")
         return self

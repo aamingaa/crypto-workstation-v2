@@ -27,7 +27,7 @@ def main() -> None:
     # analyzer.read_and_cal_metrics()
     exp_pool = analyzer.elite_factors_further_process()
     pos_test,pos_train = analyzer.go_model(exp_pool)
-    analyzer.real_trading_simulation_plot(pos_test,pos_train,0.000)
+    analyzer.real_trading_simulation_plot(pos_test,pos_train,0.0001)
 
 if __name__ == "__main__":
     main()

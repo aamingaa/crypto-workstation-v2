@@ -171,7 +171,7 @@ class GPAnalyzer:
                     read_frequency=self.read_frequency, 
                     timeframe=self.timeframe,
                     file_path=self.file_path,
-                    include_categories = getattr(self, 'include_categories', None))
+                    include_categories = getattr(self, 'include_categories', ['momentum']))
             elif str(self.data_source).lower() == 'kline_rolling':
                 self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc= dataload.data_prepare(
                     self.sym, 
@@ -789,10 +789,10 @@ class GPAnalyzer:
         for i in exp_pool:
             X_train.append(self.calculate_factors_values(i)[0])
             X_test.append(self.calculate_factors_values(i)[1])
-        X_train,X_test = np.array(X_train).T,np.array(X_test).T,
+        X_train,X_test = np.array(X_train).T, np.array(X_test).T,
         model = LinearRegression()
         # model.fit(X_train,self.ret_train.values.reshape(-1,1))
-        model.fit(X_train,self.ret_train.values.reshape(-1,1))
+        model.fit(X_train,self.y_train.values.reshape(-1,1))
         # 根据历史分位,并确定放大缩小倍数
         pos_train = model.predict(X_train).flatten()
         min_val = abs(np.percentile(pos_train, 99))
