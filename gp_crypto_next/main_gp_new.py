@@ -793,6 +793,8 @@ class GPAnalyzer:
         model = LinearRegression()
         # model.fit(X_train,self.ret_train.values.reshape(-1,1))
         model.fit(X_train,self.y_train.values.reshape(-1,1))
+
+        print(f"go_model X_train {X_train}, self.y_train.values.reshape(-1,1) {self.y_train.values.reshape(-1,1)}")
         # 根据历史分位,并确定放大缩小倍数
         pos_train = model.predict(X_train).flatten()
         min_val = abs(np.percentile(pos_train, 99))

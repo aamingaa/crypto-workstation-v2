@@ -46,82 +46,78 @@ class AlphaModelTrainer:
         print("正在训练模型...")
         
         # 选择训练标签（这里假设已经传入了正确的y），并压平成一维
-        train_label = np.asarray(self.y_train).reshape(-1)
-        test_label = np.asarray(self.y_test).reshape(-1)
+        train_label = np.asarray(self.y_train).reshape(-1, 1)
+        test_label = np.asarray(self.y_test).reshape(-1, 1)
         
         # 1. 线性回归
+        print(f"train_all_models train_label {train_label}", train_label)
         print("训练线性回归模型...")
         lr_model = LinearRegression(fit_intercept=True)
         lr_model.fit(self.X_train, train_label)
         self.models['LinearRegression'] = lr_model
-        print(f"  系数: {lr_model.coef_.flatten()[:5]}... (显示前5个)")
+        print(f" 系数: {lr_model.coef_.flatten()[:5]}... (显示前5个)")
         print(f"  截距: {lr_model.intercept_}")
         
-        # 2. Ridge回归
-        # print("训练Ridge回归模型...")
-        # ridge_model = Ridge(alpha=0.2, fit_intercept=True)
-        # ridge_model.fit(self.X_train, train_label)
-        # self.models['Ridge'] = ridge_model
+
+        # # 3. Lasso回归
+        # print("训练Lasso回归模型...")
+        # lasso_model = LassoCV(fit_intercept=True, max_iter=5000)
+        # lasso_model.fit(self.X_train, train_label)
+        # self.models['Lasso'] = lasso_model
         
-        # 3. Lasso回归
-        print("训练Lasso回归模型...")
-        lasso_model = LassoCV(fit_intercept=True, max_iter=5000)
-        lasso_model.fit(self.X_train, train_label)
-        self.models['Lasso'] = lasso_model
+        # # 4. XGBoost
+        # print("训练XGBoost模型...")
+        # X_train_df = pd.DataFrame(self.X_train, columns=self.selected_factors)
+        # y_train_series = pd.Series(train_label)
+        # X_test_df = pd.DataFrame(self.X_test, columns=self.selected_factors)
+        # y_test_series = pd.Series(test_label)
         
-        # 4. XGBoost
-        print("训练XGBoost模型...")
-        X_train_df = pd.DataFrame(self.X_train, columns=self.selected_factors)
-        y_train_series = pd.Series(train_label)
-        X_test_df = pd.DataFrame(self.X_test, columns=self.selected_factors)
-        y_test_series = pd.Series(test_label)
+        # xgb_model = XGBRegressor(
+        #     max_depth=3,
+        #     learning_rate=0.1,
+        #     n_estimators=100,
+        #     objective='reg:squarederror',
+        #     random_state=0,
+        #     early_stopping_rounds=20
+        # )
         
-        xgb_model = XGBRegressor(
-            max_depth=3,
-            learning_rate=0.1,
-            n_estimators=100,
-            objective='reg:squarederror',
-            random_state=0,
-            early_stopping_rounds=20
-        )
+        # xgb_model.fit(
+        #     X_train_df, y_train_series,
+        #     eval_set=[(X_test_df, y_test_series)],
+        #     verbose=False
+        # )
         
-        xgb_model.fit(
-            X_train_df, y_train_series,
-            eval_set=[(X_test_df, y_test_series)],
-            verbose=False
-        )
+        # self.models['XGBoost'] = xgb_model
         
-        self.models['XGBoost'] = xgb_model
+        # # 5. LightGBM
+        # print("训练LightGBM模型...")
+        # lgb_params = {
+        #     'objective': 'regression',
+        #     'metric': 'rmse',
+        #     'boosting': 'gbdt',
+        #     'learning_rate': 0.054,
+        #     'max_depth': 3,
+        #     'num_leaves': 32,
+        #     'min_data_in_leaf': 50,
+        #     'feature_fraction': 0.5,
+        #     'bagging_fraction': 0.5,
+        #     'lambda_l1': 0.05,
+        #     'lambda_l2': 120,
+        #     'verbose': -1
+        # }
         
-        # 5. LightGBM
-        print("训练LightGBM模型...")
-        lgb_params = {
-            'objective': 'regression',
-            'metric': 'rmse',
-            'boosting': 'gbdt',
-            'learning_rate': 0.054,
-            'max_depth': 3,
-            'num_leaves': 32,
-            'min_data_in_leaf': 50,
-            'feature_fraction': 0.5,
-            'bagging_fraction': 0.5,
-            'lambda_l1': 0.05,
-            'lambda_l2': 120,
-            'verbose': -1
-        }
+        # lgb_train = lgb.Dataset(X_train_df, y_train_series)
+        # lgb_val = lgb.Dataset(X_test_df, y_test_series, reference=lgb_train)
         
-        lgb_train = lgb.Dataset(X_train_df, y_train_series)
-        lgb_val = lgb.Dataset(X_test_df, y_test_series, reference=lgb_train)
+        # lgb_model = lgb.train(
+        #     lgb_params,
+        #     lgb_train,
+        #     num_boost_round=500,
+        #     valid_sets=lgb_val,
+        #     callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
+        # )
         
-        lgb_model = lgb.train(
-            lgb_params,
-            lgb_train,
-            num_boost_round=500,
-            valid_sets=lgb_val,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
-        )
-        
-        self.models['LightGBM'] = lgb_model
+        # self.models['LightGBM'] = lgb_model
         
         print("所有模型训练完成")
         return self
