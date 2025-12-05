@@ -835,8 +835,16 @@ class GPAnalyzer:
         pos_change = np.concatenate((np.array([0]), np.diff(real_pos)))
         # 决定以什么价位开仓，当仓位变化大于0时，需要买进，更差的价格是close和next open的最大值
         # 当仓位变化小于0时，需要卖出，更差的价格是close和next open的最小值
-        which_price_to_trade = np.where(pos_change, np.maximum(close, next_open), np.minimum(close, next_open))
+        
+        buy_mask = pos_change > 0
+        sell_mask = pos_change < 0
 
+        buy_price = np.maximum(close, next_open)
+        sell_price = np.minimum(close, next_open)
+
+        which_price_to_trade = np.where(buy_mask, buy_price,
+                                        np.where(sell_mask, sell_price, close))
+        
         next_trade_close = np.concatenate((which_price_to_trade[1:], np.array([which_price_to_trade[-1]])))
         rets = np.log(next_trade_close) - np.log(which_price_to_trade) 
         fee = fee  # 万5手续费

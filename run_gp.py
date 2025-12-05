@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-
+from multi_model_strategy.backtest_engine import BacktestEngine
 
 def main() -> None:
     project_root = Path(__file__).resolve().parent
@@ -27,7 +27,10 @@ def main() -> None:
     # analyzer.read_and_cal_metrics()
     exp_pool = analyzer.elite_factors_further_process()
     pos_test,pos_train = analyzer.go_model(exp_pool)
-    analyzer.real_trading_simulation_plot(pos_test,pos_train,0.0001)
+    analyzer.real_trading_simulation_plot(pos_test,pos_train,0.0005)
+    #     
+    # backtestEngine = BacktestEngine(analyzer.open_train, analyzer.close_train, analyzer.open_test, analyzer.close_test, 0.0005, analyzer.annual_bars)
+    # backtestEngine.backtest_with_backtest_engine(pos_test, pos_train, 0.0005)
 
 if __name__ == "__main__":
     main()

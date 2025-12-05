@@ -211,6 +211,48 @@ class BacktestEngine:
         
         return metrics
     
+    def backtest_with_backtest_engine(self, pos_test, pos_train=None, fees_rate=None):
+        """
+        使用 multi_model_strategy.BacktestEngine 对 GP 产生的仓位进行统一口径回测
+        
+        Args:
+            pos_test (np.ndarray): 测试集仓位序列
+            pos_train (np.ndarray or None): 训练集仓位序列；若为 None，则不回测训练段
+            fees_rate (float or None): 手续费率；None 时优先使用 self.fees_rate，否则回退到 0.0005
+        
+        Returns:
+            dict: {
+                "train": {"pnl": np.ndarray, "metrics": dict} or None,
+                "test":  {"pnl": np.ndarray, "metrics": dict}
+            }
+        """
+        # 手续费率与年化 bar 数与 multi_model_strategy 保持一致口径
+        # if fees_rate is None:
+        #     fees_rate = getattr(self, "fees_rate", 0.0005)
+        # annual_bars = getattr(self, "annual_bars", calculate_annual_bars(self.freq))
+
+        # engine = BacktestEngine(
+        #     self.open_train,
+        #     self.close_train,
+        #     self.open_test,
+        #     self.close_test,
+        #     fees_rate=fees_rate,
+        #     annual_bars=annual_bars,
+        # )
+
+        results = {"train": None, "test": None}
+
+        # 测试集回测（必跑）
+        pnl_test, metrics_test = self.run_backtest(pos_test, data_range="test")
+        results["test"] = {"pnl": pnl_test, "metrics": metrics_test}
+
+        # 训练集回测（可选）
+        if pos_train is not None:
+            pnl_train, metrics_train = self.run_backtest(pos_train, data_range="train")
+            results["train"] = {"pnl": pnl_train, "metrics": metrics_train}
+
+        return results
+    
     def backtest_all_models(self, predictions):
         """
         回测所有模型
