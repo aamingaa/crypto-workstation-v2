@@ -604,6 +604,9 @@ class QuantTradingStrategy:
         self.alpha_trainer.train_all_models(use_normalized_label=True)
         self.alpha_trainer.make_predictions()
         
+        self.alpha_trainer.plot_training_losses(
+            output_dir=self.data_module.get_total_factor_file_dir()  # 或任何你想存的目录
+        )
         # 模型集成
         backtest_fn = lambda pos, data_range: self.backtest_engine.run_backtest(pos, data_range)
         self.alpha_trainer.ensemble_models(weight_method, backtest_fn)

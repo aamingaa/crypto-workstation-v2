@@ -4,6 +4,8 @@ Alpha 模型训练模块
 """
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LassoCV
 from xgboost import XGBRegressor
 import lightgbm as lgb
@@ -32,6 +34,7 @@ class AlphaModelTrainer:
         self.models = {}
         self.predictions = {}
         self.ensemble_weights = None
+        self.training_logs = {}
     
     def train_all_models(self, use_normalized_label=True):
         """
@@ -83,11 +86,16 @@ class AlphaModelTrainer:
         
         xgb_model.fit(
             X_train_df, y_train_series,
-            eval_set=[(X_test_df, y_test_series)],
+            eval_set=[(X_train_df, y_train_series), (X_test_df, y_test_series)],
             verbose=False
         )
-        
+
         self.models['XGBoost'] = xgb_model
+        # 记录训练/验证集 rmse 曲线
+        try:
+            self.training_logs['XGBoost'] = xgb_model.evals_result()
+        except Exception:
+            self.training_logs['XGBoost'] = {}
         
         # 5. LightGBM
         print("训练LightGBM模型...")
@@ -108,16 +116,23 @@ class AlphaModelTrainer:
         
         lgb_train = lgb.Dataset(X_train_df, y_train_series)
         lgb_val = lgb.Dataset(X_test_df, y_test_series, reference=lgb_train)
+        lgb_eval_result = {}
         
         lgb_model = lgb.train(
             lgb_params,
             lgb_train,
             num_boost_round=500,
-            valid_sets=lgb_val,
-            callbacks=[lgb.early_stopping(100), lgb.log_evaluation(0)]
+            valid_sets=[lgb_train, lgb_val],
+            valid_names=['train', 'valid'],
+            callbacks=[
+                lgb.early_stopping(100),
+                lgb.log_evaluation(0),
+                lgb.record_evaluation(lgb_eval_result),
+            ],
         )
         
         self.models['LightGBM'] = lgb_model
+        self.training_logs['LightGBM'] = lgb_eval_result
         
         print("所有模型训练完成")
         return self
@@ -230,3 +245,47 @@ class AlphaModelTrainer:
     def get_models(self):
         """返回所有训练好的模型"""
         return self.models
+
+    def plot_training_losses(self, output_dir):
+        """
+        绘制并保存各模型的训练 / 验证损失曲线（目前支持 XGBoost 与 LightGBM）。
+        
+        Args:
+            output_dir (str or Path): 图像输出目录
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # XGBoost
+        xgb_log = self.training_logs.get('XGBoost', {})
+        if xgb_log:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            for name, metrics in xgb_log.items():
+                if 'rmse' in metrics:
+                    ax.plot(metrics['rmse'], label=f"{name}_rmse")
+            ax.set_title("XGBoost Training / Validation RMSE")
+            ax.set_xlabel("Iteration")
+            ax.set_ylabel("RMSE")
+            ax.legend()
+            ax.grid(True, linestyle="--", alpha=0.4)
+            plt.tight_layout()
+            plt.savefig(output_dir / "XGBoost_training_loss.png", dpi=150)
+            plt.close(fig)
+
+        # LightGBM
+        lgb_log = self.training_logs.get('LightGBM', {})
+        if lgb_log:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            for name, metrics in lgb_log.items():
+                if 'rmse' in metrics:
+                    ax.plot(metrics['rmse'], label=f"{name}_rmse")
+            ax.set_title("LightGBM Training / Validation RMSE")
+            ax.set_xlabel("Iteration")
+            ax.set_ylabel("RMSE")
+            ax.legend()
+            ax.grid(True, linestyle="--", alpha=0.4)
+            plt.tight_layout()
+            plt.savefig(output_dir / "LightGBM_training_loss.png", dpi=150)
+            plt.close(fig)
+
+        print(f"训练损失曲线已保存到: {output_dir}")
