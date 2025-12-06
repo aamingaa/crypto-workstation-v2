@@ -1001,7 +1001,7 @@ class GPAnalyzer:
         dir_path.mkdir(parents=True, exist_ok=True)
         # Save the plot
         plt.savefig(f'{self.total_factor_file_dir}/real_trading/net_value_performance.png')
-    
+                
     
 
 
