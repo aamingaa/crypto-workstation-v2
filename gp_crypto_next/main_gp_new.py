@@ -26,6 +26,7 @@ from scipy.stats import zscore, kurtosis, skew, yeojohnson, boxcox
 from scipy.stats import tukeylambda, mstats
 from expressionProgram import FeatureEvaluator
 from concurrent.futures import ProcessPoolExecutor
+from multi_model_strategy.diagnostics import DiagnosticTools
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 pd.set_option('display.max_columns', 100)
@@ -815,6 +816,111 @@ class GPAnalyzer:
         print(f'模型系数{model.coef_},模型的截距为{model.intercept_}')
         print(f'查看pos{pos.shape}')
         return pos,pos_train
+
+    def build_diagnostic_tools_from_exp_pool(self, exp_pool, fees_rate=0.0005):
+        """
+        基于 gplearn 挖出来的因子池（exp_pool）构造 DiagnosticTools，
+        默认使用 train+test 拼接的因子时序，并与 ret_train/ret_test 对齐。
+        
+        Args:
+            exp_pool (list[str]): 因子表达式列表（通常来自 self.read_and_pick / elite_factors_further_process）
+            fees_rate (float): 手续费率
+        Returns:
+            DiagnosticTools: 已就绪的诊断工具实例
+        """
+        if not exp_pool:
+            raise ValueError("exp_pool 为空，无法构造 DiagnosticTools。")
+        
+        # 计算每个因子在 train/test 上的取值，并按 train + test 拼接
+        factor_dict = {}
+        for exp in exp_pool:
+            train_vals, test_vals = self.calculate_factors_values(exp)
+            factor_series = np.concatenate([np.asarray(train_vals).flatten(),
+                                            np.asarray(test_vals).flatten()])
+            factor_dict[exp] = factor_series
+        
+        total_len = len(self.ret_train) + len(self.ret_test)
+        factor_df = pd.DataFrame(factor_dict, index=range(total_len))
+        
+        diag = DiagnosticTools(
+            factor_data=factor_df,
+            selected_factors=list(factor_df.columns),
+            ret_train=self.ret_train,
+            ret_test=self.ret_test,
+            open_train=self.open_train,
+            close_train=self.close_train,
+            open_test=self.open_test,
+            close_test=self.close_test,
+            fees_rate=fees_rate,
+            annual_bars=self.annual_bars,
+        )
+        return diag
+
+    def run_factor_pool_diagnostics(self, exp_pool=None, fees_rate=0.0005):
+        """
+        对 gplearn 挖出来的因子池做一键诊断（基于 multi_model_strategy.DiagnosticTools）。
+        
+        默认使用：
+            - 因子池：self.read_and_pick() 的输出（与 go_model 同一批因子）
+            - 诊断区间：以测试集为主做 IC / 回测，训练集做对照
+        Returns:
+            dict: DiagnosticTools.run_full_diagnostics 的返回结果
+        """
+        if exp_pool is None:
+            exp_pool = self.read_and_pick()
+        diag = self.build_diagnostic_tools_from_exp_pool(exp_pool, fees_rate=fees_rate)
+        results = diag.run_full_diagnostics(
+            data_range_main='test',
+            top_n_ic=min(20, len(exp_pool)),
+            top_n_backtest=min(10, len(exp_pool)),
+            n_quantiles=5,
+            horizons_ic_decay=(1, 3, 5),
+            corr_threshold=0.9,
+        )
+
+        # === 将诊断结果落盘到 self.total_factor_file_dir/diagnostics/ ===
+        diag_dir = Path(self.total_factor_file_dir) / "diagnostics"
+        diag_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1) IC 报表（train / test）
+        ic_train = results.get("ic_train")
+        ic_test = results.get("ic_test")
+        if isinstance(ic_train, pd.DataFrame):
+            ic_train.to_csv(diag_dir / "ic_train.csv", index=False)
+        if isinstance(ic_test, pd.DataFrame):
+            ic_test.to_csv(diag_dir / "ic_test.csv", index=False)
+
+        # 2) IC Decay：展开为长表
+        ic_decay = results.get("ic_decay", {})
+        decay_records = []
+        for fct, h_dict in ic_decay.items():
+            for h, vals in h_dict.items():
+                decay_records.append({
+                    "factor": fct,
+                    "horizon": h,
+                    "IC": vals.get("IC", np.nan),
+                    "RankIC": vals.get("RankIC", np.nan),
+                })
+        if decay_records:
+            df_decay = pd.DataFrame(decay_records)
+            df_decay.sort_values(["factor", "horizon"], inplace=True)
+            df_decay.to_csv(diag_dir / "ic_decay_long.csv", index=False)
+
+        # 3) |IC| TopN 单因子回测指标
+        backtest_top = results.get("backtest_top", {})
+        if backtest_top:
+            df_bt = pd.DataFrame(backtest_top).T
+            df_bt.index.name = "factor"
+            df_bt.reset_index(inplace=True)
+            df_bt.to_csv(diag_dir / "backtest_top_factors.csv", index=False)
+
+        # 4) 因子相关矩阵
+        corr_mat = results.get("corr")
+        if isinstance(corr_mat, pd.DataFrame):
+            corr_mat.to_csv(diag_dir / "factor_corr.csv", index=True)
+
+        print(f"因子池诊断结果已保存至目录: {diag_dir}")
+        return results
 
     def real_trading_simulator(self,pos:np.array, data_range = 'test', fee = 0.0005):
         '''模拟真实的交易场景'''

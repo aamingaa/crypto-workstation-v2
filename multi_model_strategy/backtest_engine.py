@@ -4,6 +4,9 @@
 """
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 
 class BacktestEngine:
@@ -251,6 +254,112 @@ class BacktestEngine:
             pnl_train, metrics_train = self.run_backtest(pos_train, data_range="train")
             results["train"] = {"pnl": pnl_train, "metrics": metrics_train}
 
+        return results
+
+    def real_trading_simulation_plot(self, pos_test, pos_train=None, save_dir=None, title=None):
+        """
+        参考 GPAnalyzer.real_trading_simulation_plot 的接口，
+        使用 BacktestEngine 的交易逻辑绘制 train/test 价格 + 净值曲线，并在图中标注测试集绩效指标。
+        
+        Args:
+            pos_test (np.ndarray): 测试集仓位
+            pos_train (np.ndarray, optional): 训练集仓位；若为 None，则不绘制训练段 PnL
+            save_dir (str or Path, optional): 图片保存目录；None 则不保存，仅展示
+            title (str, optional): 总标题
+        Returns:
+            dict: {"train": {...} or None, "test": {...}}，包含 pnl 与指标
+        """
+        results = {"train": None, "test": None}
+
+        # 回测测试集
+        pnl_test, metrics_test = self.run_backtest(pos_test, data_range="test")
+        results["test"] = {"pnl": pnl_test, "metrics": metrics_test}
+
+        # 回测训练集（可选）
+        if pos_train is not None:
+            pnl_train, metrics_train = self.run_backtest(pos_train, data_range="train")
+            results["train"] = {"pnl": pnl_train, "metrics": metrics_train}
+        else:
+            pnl_train, metrics_train = None, None
+
+        # 价格与索引（尽量复用 Series 的时间索引）
+        close_train = self.close_train
+        close_test = self.close_test
+
+        if isinstance(close_train, pd.Series):
+            idx_train = close_train.index
+            price_train = close_train.values
+        else:
+            price_train = np.asarray(close_train)
+            idx_train = np.arange(len(price_train))
+
+        if isinstance(close_test, pd.Series):
+            idx_test = close_test.index
+            price_test = close_test.values
+        else:
+            price_test = np.asarray(close_test)
+            idx_test = np.arange(len(price_test))
+
+        # 将 pnl 视为累计 log 收益，直接画形态（与 GPAnalyzer 保持一致）
+        fig, axs = plt.subplots(2, 2, figsize=(10, 12))
+        if title is None:
+            title = "Real Trading Simulation (BacktestEngine)"
+        fig.suptitle(title, fontsize=16)
+
+        # Train price
+        axs[0, 0].plot(idx_train, price_train, 'b-')
+        axs[0, 0].set_title('price_train')
+        if isinstance(idx_train, pd.DatetimeIndex):
+            axs[0, 0].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            axs[0, 0].xaxis.set_major_locator(mdates.MonthLocator())
+
+        # Train pnl
+        if pnl_train is not None:
+            axs[1, 0].plot(idx_train[:len(pnl_train)], pnl_train, 'r-')
+        axs[1, 0].set_title('pnl_train')
+        if isinstance(idx_train, pd.DatetimeIndex):
+            axs[1, 0].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            axs[1, 0].xaxis.set_major_locator(mdates.MonthLocator())
+
+        # Test price
+        axs[0, 1].plot(idx_test, price_test, 'b-')
+        axs[0, 1].set_title('price_test')
+        if isinstance(idx_test, pd.DatetimeIndex):
+            axs[0, 1].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            axs[0, 1].xaxis.set_major_locator(mdates.MonthLocator())
+
+        # Test pnl
+        axs[1, 1].plot(idx_test[:len(pnl_test)], pnl_test, 'r-')
+        axs[1, 1].set_title('pnl_test')
+        if isinstance(idx_test, pd.DatetimeIndex):
+            axs[1, 1].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            axs[1, 1].xaxis.set_major_locator(mdates.MonthLocator())
+
+        # 在测试集 pnl 子图上标注指标
+        annotation_text = "\n".join([f"{key}: {value:.4f}" for key, value in metrics_test.items()])
+        axs[1, 1].annotate(
+            annotation_text,
+            xy=(0.05, 0.95),
+            xycoords='axes fraction',
+            verticalalignment='top',
+            horizontalalignment='left',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+        )
+
+        for ax in axs.flat:
+            ax.grid(True)
+
+        plt.tight_layout()
+
+        if save_dir is not None:
+            save_dir = Path(save_dir)
+            save_dir.mkdir(parents=True, exist_ok=True)
+            out_path = save_dir / "net_value_performance.png"
+            plt.savefig(out_path)
+        else:
+            plt.show()
+
+        plt.close(fig)
         return results
     
     def backtest_all_models(self, predictions):
