@@ -32,22 +32,6 @@ def main() -> None:
     fees_rate = 0.0005
     analyzer.real_trading_simulation_plot(pos_test, pos_train, fees_rate=fees_rate)
 
-    # 使用 multi_model_strategy.BacktestEngine，以统一口径做回测 + 绘图
-    # backtest_engine = BacktestEngine(
-    #     analyzer.open_train,
-    #     analyzer.close_train,
-    #     analyzer.open_test,
-    #     analyzer.close_test,
-    #     fees_rate=fees_rate,
-    #     annual_bars=analyzer.annual_bars,
-    # )
-    # backtest_engine.real_trading_simulation_plot(
-    #     pos_test=pos_test,
-    #     pos_train=pos_train,
-    #     save_dir=Path(analyzer.total_factor_file_dir) / "real_trading",
-    #     title=f"{analyzer.sym} real trading (BacktestEngine)",
-    # )
-
     diag_results = analyzer.run_factor_pool_diagnostics(exp_pool, fees_rate=fees_rate)
     print(diag_results)
 
