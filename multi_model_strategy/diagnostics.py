@@ -4,6 +4,8 @@
 """
 import numpy as np
 import pandas as pd
+from pathlib import Path
+import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 
 
@@ -13,7 +15,7 @@ class DiagnosticTools:
     """
     
     def __init__(self, factor_data, selected_factors, ret_train, ret_test, 
-                 open_train, close_train, open_test, close_test, fees_rate, annual_bars):
+                 y_train, y_test, open_train, close_train, open_test, close_test, fees_rate, annual_bars):
         """
         Args:
             factor_data (pd.DataFrame): 因子数据
@@ -29,6 +31,8 @@ class DiagnosticTools:
         self.selected_factors = selected_factors
         self.ret_train = ret_train
         self.ret_test = ret_test
+        self.y_train = y_train
+        self.y_test = y_test
         self.open_train = open_train
         self.close_train = close_train
         self.open_test = open_test
@@ -48,6 +52,8 @@ class DiagnosticTools:
         
         ret_train = np.asarray(self.ret_train).flatten()
         ret_test = np.asarray(self.ret_test).flatten()
+        y_train = np.asarray(self.y_train).flatten()
+        y_test = np.asarray(self.y_test).flatten()
         
         def _summary(arr, name):
             arr = np.asarray(arr)
@@ -64,6 +70,8 @@ class DiagnosticTools:
         
         _summary(ret_train, "Train Label (ret_train)")
         _summary(ret_test, "Test Label (ret_test)")
+        _summary(y_train, "Train Label (y_train)")
+        _summary(y_test, "Test Label (y_test)")
         
         # Triple Barrier 统计
         if barrier_results is not None:
@@ -165,12 +173,13 @@ class DiagnosticTools:
             return None
         
         train_len = len(self.ret_train)
+        test_len = len(self.ret_test)
         if data_range == 'train':
             fac_vals = self.factor_data[factor_name].iloc[:train_len].values
             pos = self._build_long_short_position(fac_vals, n_quantiles)
             pnl, metrics = self._simulate_trading(pos, 'train')
         elif data_range == 'test':
-            fac_vals = self.factor_data[factor_name].iloc[train_len:].values
+            fac_vals = self.factor_data[factor_name].iloc[-test_len:].values
             pos = self._build_long_short_position(fac_vals, n_quantiles)
             pnl, metrics = self._simulate_trading(pos, 'test')
         else:
@@ -439,7 +448,7 @@ class DiagnosticTools:
     def run_full_diagnostics(
         self,
         data_range_main='test',
-        top_n_ic=20,
+        top_n_ic=10,
         top_n_backtest=5,
         n_quantiles=5,
         horizons_ic_decay=(1, 3, 5),
@@ -495,6 +504,158 @@ class DiagnosticTools:
         
         print("===== 一键因子诊断结束（run_full_diagnostics） =====\n")
         return results
+    
+    def save_full_diagnostics_to_dir(
+        self,
+        results: dict,
+        save_dir,
+        title: str = None,
+        max_ic_bars: int = 10,
+        max_decay_factors: int = 5,
+        max_sharpe_bars: int = 10,
+        max_corr_factors: int = 20,
+    ):
+        """
+        将 run_full_diagnostics 的结果落盘（csv + 综览大图）。
+        
+        Args:
+            results (dict): run_full_diagnostics 的返回结果
+            save_dir (str or Path): 输出目录
+            title (str): 综览图标题
+        """
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        ic_train = results.get("ic_train")
+        ic_test = results.get("ic_test")
+        ic_decay = results.get("ic_decay", {})
+        backtest_top = results.get("backtest_top", {})
+        corr_mat = results.get("corr")
+
+        # 1) IC 报表
+        if isinstance(ic_train, pd.DataFrame):
+            ic_train.to_csv(save_dir / "ic_train.csv", index=False)
+        if isinstance(ic_test, pd.DataFrame):
+            ic_test.to_csv(save_dir / "ic_test.csv", index=False)
+
+        # 2) IC Decay 长表
+        decay_records = []
+        for fct, h_dict in ic_decay.items():
+            for h, vals in h_dict.items():
+                decay_records.append({
+                    "factor": fct,
+                    "horizon": h,
+                    "IC": vals.get("IC", np.nan),
+                    "RankIC": vals.get("RankIC", np.nan),
+                })
+        if decay_records:
+            df_decay = pd.DataFrame(decay_records)
+            df_decay.sort_values(["factor", "horizon"], inplace=True)
+            df_decay.to_csv(save_dir / "ic_decay_long.csv", index=False)
+
+        # 3) 单因子回测指标
+        if backtest_top:
+            df_bt = pd.DataFrame(backtest_top).T
+            df_bt.index.name = "factor"
+            df_bt.reset_index(inplace=True)
+            df_bt.to_csv(save_dir / "backtest_top_factors.csv", index=False)
+        else:
+            df_bt = None
+
+        # 4) 因子相关矩阵
+        if isinstance(corr_mat, pd.DataFrame):
+            corr_mat.to_csv(save_dir / "factor_corr.csv", index=True)
+
+        # 5) 单独绘制若干诊断图
+        try:
+            # (1) 测试集 |IC| TopK 柱状图
+            if isinstance(ic_test, pd.DataFrame) and not ic_test.empty:
+                fig_ic, ax_ic = plt.subplots(figsize=(10, 4))
+                df_plot_ic = ic_test.copy()
+                sort_col = "|IC|" if "|IC|" in df_plot_ic.columns else "IC"
+                df_plot_ic = df_plot_ic.sort_values(sort_col, ascending=False)
+                top_k = min(max_ic_bars, len(df_plot_ic))
+                df_plot_ic = df_plot_ic.head(top_k)
+                ax_ic.bar(df_plot_ic["factor"], df_plot_ic["IC"])
+                ax_ic.set_title("Test: 单因子 IC（Top）")
+                ax_ic.set_ylabel("IC")
+                ax_ic.set_xticklabels(df_plot_ic["factor"], rotation=45, ha="right", fontsize=8)
+                ax_ic.axhline(0, color="black", linewidth=0.8)
+                ax_ic.grid(True, axis="y", linestyle="--", alpha=0.4)
+                plt.tight_layout()
+                (save_dir / "ic_test_top.png").unlink(missing_ok=True)
+                plt.savefig(save_dir / "ic_test_top.png", dpi=150)
+                plt.close(fig_ic)
+
+            # (2) IC Decay 曲线（选部分因子）
+            if ic_decay:
+                fig_decay, ax_decay = plt.subplots(figsize=(10, 4))
+                factors_all = list(ic_decay.keys())
+                if isinstance(ic_test, pd.DataFrame) and not ic_test.empty:
+                    ordered = ic_test.sort_values(
+                        "|IC|" if "|IC|" in ic_test.columns else "IC",
+                        ascending=False,
+                    )["factor"].tolist()
+                    chosen = [f for f in ordered if f in ic_decay][:max_decay_factors]
+                    if not chosen:
+                        chosen = factors_all[:max_decay_factors]
+                else:
+                    chosen = factors_all[:max_decay_factors]
+
+                for fct in chosen:
+                    h_dict = ic_decay.get(fct, {})
+                    if not h_dict:
+                        continue
+                    hs = sorted(h_dict.keys())
+                    ic_vals = [h_dict[h]["IC"] for h in hs]
+                    ax_decay.plot(hs, ic_vals, marker="o", label=fct)
+                ax_decay.set_title("IC Decay（部分因子）")
+                ax_decay.set_xlabel("horizon")
+                ax_decay.set_ylabel("IC")
+                ax_decay.axhline(0, color="black", linewidth=0.8)
+                ax_decay.grid(True, linestyle="--", alpha=0.4)
+                if chosen:
+                    ax_decay.legend(fontsize=8)
+                plt.tight_layout()
+                (save_dir / "ic_decay_selected.png").unlink(missing_ok=True)
+                plt.savefig(save_dir / "ic_decay_selected.png", dpi=150)
+                plt.close(fig_decay)
+
+            # (3) 单因子回测 Sharpe 柱状图
+            if isinstance(df_bt, pd.DataFrame) and not df_bt.empty and "Sharpe Ratio" in df_bt.columns:
+                fig_bt, ax_bt = plt.subplots(figsize=(10, 4))
+                df_plot_bt = df_bt.sort_values("Sharpe Ratio", ascending=False)
+                top_k_bt = min(max_sharpe_bars, len(df_plot_bt))
+                df_plot_bt = df_plot_bt.head(top_k_bt)
+                ax_bt.bar(df_plot_bt["factor"], df_plot_bt["Sharpe Ratio"])
+                ax_bt.set_title("Test: 单因子多空回测 Sharpe（Top）")
+                ax_bt.set_ylabel("Sharpe")
+                ax_bt.set_xticklabels(df_plot_bt["factor"], rotation=45, ha="right", fontsize=8)
+                ax_bt.axhline(0, color="black", linewidth=0.8)
+                ax_bt.grid(True, axis="y", linestyle="--", alpha=0.4)
+                plt.tight_layout()
+                (save_dir / "backtest_sharpe_top.png").unlink(missing_ok=True)
+                plt.savefig(save_dir / "backtest_sharpe_top.png", dpi=150)
+                plt.close(fig_bt)
+
+            # (4) 因子相关性热力图
+            if isinstance(corr_mat, pd.DataFrame) and not corr_mat.empty:
+                fig_corr, ax_corr = plt.subplots(figsize=(8, 6))
+                cols = corr_mat.columns.tolist()[:max_corr_factors]
+                sub_corr = corr_mat.loc[cols, cols]
+                im = ax_corr.imshow(sub_corr.values, cmap="coolwarm", vmin=-1, vmax=1)
+                ax_corr.set_title("因子相关性热力图（Spearman）")
+                ax_corr.set_xticks(range(len(cols)))
+                ax_corr.set_yticks(range(len(cols)))
+                ax_corr.set_xticklabels(cols, rotation=90, fontsize=7)
+                ax_corr.set_yticklabels(cols, fontsize=7)
+                fig_corr.colorbar(im, ax=ax_corr, fraction=0.046, pad=0.04)
+                plt.tight_layout()
+                (save_dir / "factor_corr_heatmap.png").unlink(missing_ok=True)
+                plt.savefig(save_dir / "factor_corr_heatmap.png", dpi=150)
+                plt.close(fig_corr)
+        except Exception as e:
+            print(f"绘制因子诊断综览图失败: {e}")
     
     def _build_long_short_position(self, factor_values, n_quantiles=5):
         """构建多空分层仓位（顶层+1，底层-1）"""

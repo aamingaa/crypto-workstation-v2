@@ -1,0 +1,13 @@
+factor,IC,RankIC,|IC|
+ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),0.03747639483840023,0.033017104865088166,0.03747639483840023
+"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.033739816575336805,-0.001581169565259315,0.033739816575336805
+"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",0.032124333939613836,0.007830214633214838,0.032124333939613836
+ta_lr_slope_20(ta_trima_8(ori_ta_macd)),0.031973348346738,0.01652727562823247,0.031973348346738
+"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.02746379004473453,-0.004474377327659251,0.02746379004473453
+"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.027291970077226543,0.008393552886284272,0.027291970077226543
+"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",0.026529434335918763,0.021386347343392245,0.026529434335918763
+"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",0.02607019420125399,0.006956674585664648,0.02607019420125399
+"TA_SAR(close_macd, ta_dema_55(vol))",0.020641990787056447,0.00244883505453438,0.020641990787056447
+"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",0.01678738701897145,0.01653804194640426,0.01678738701897145
+ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),0.015756121806075583,0.0027976018380473948,0.015756121806075583
+ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),0.011137373311942981,-0.0016870110491887848,0.011137373311942981

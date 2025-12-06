@@ -591,6 +591,7 @@ class QuantTradingStrategy:
         self.diagnostic_tools = DiagnosticTools(
             factor_data, selected_factors,
             self.ret_train, self.ret_test,
+            self.y_train, self.y_test,
             self.data_module.open_train, self.data_module.close_train,
             self.data_module.open_test, self.data_module.close_test,
             self.config['fees_rate'], self.config['annual_bars']

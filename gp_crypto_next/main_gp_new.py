@@ -847,6 +847,8 @@ class GPAnalyzer:
             selected_factors=list(factor_df.columns),
             ret_train=self.ret_train,
             ret_test=self.ret_test,
+            y_train=self.y_train,
+            y_test=self.y_test,
             open_train=self.open_train,
             close_train=self.close_train,
             open_test=self.open_test,
@@ -874,51 +876,16 @@ class GPAnalyzer:
             top_n_ic=min(20, len(exp_pool)),
             top_n_backtest=min(10, len(exp_pool)),
             n_quantiles=5,
-            horizons_ic_decay=(1, 3, 5),
+            horizons_ic_decay=(2, 4, 6, 8, 10, 12),
             corr_threshold=0.9,
         )
-
-        # === 将诊断结果落盘到 self.total_factor_file_dir/diagnostics/ ===
+        # 将诊断结果落盘到 self.total_factor_file_dir/diagnostics/ （由 DiagnosticTools 统一处理）
         diag_dir = Path(self.total_factor_file_dir) / "diagnostics"
-        diag_dir.mkdir(parents=True, exist_ok=True)
-
-        # 1) IC 报表（train / test）
-        ic_train = results.get("ic_train")
-        ic_test = results.get("ic_test")
-        if isinstance(ic_train, pd.DataFrame):
-            ic_train.to_csv(diag_dir / "ic_train.csv", index=False)
-        if isinstance(ic_test, pd.DataFrame):
-            ic_test.to_csv(diag_dir / "ic_test.csv", index=False)
-
-        # 2) IC Decay：展开为长表
-        ic_decay = results.get("ic_decay", {})
-        decay_records = []
-        for fct, h_dict in ic_decay.items():
-            for h, vals in h_dict.items():
-                decay_records.append({
-                    "factor": fct,
-                    "horizon": h,
-                    "IC": vals.get("IC", np.nan),
-                    "RankIC": vals.get("RankIC", np.nan),
-                })
-        if decay_records:
-            df_decay = pd.DataFrame(decay_records)
-            df_decay.sort_values(["factor", "horizon"], inplace=True)
-            df_decay.to_csv(diag_dir / "ic_decay_long.csv", index=False)
-
-        # 3) |IC| TopN 单因子回测指标
-        backtest_top = results.get("backtest_top", {})
-        if backtest_top:
-            df_bt = pd.DataFrame(backtest_top).T
-            df_bt.index.name = "factor"
-            df_bt.reset_index(inplace=True)
-            df_bt.to_csv(diag_dir / "backtest_top_factors.csv", index=False)
-
-        # 4) 因子相关矩阵
-        corr_mat = results.get("corr")
-        if isinstance(corr_mat, pd.DataFrame):
-            corr_mat.to_csv(diag_dir / "factor_corr.csv", index=True)
-
+        diag.save_full_diagnostics_to_dir(
+            results,
+            save_dir=diag_dir,
+            title=f"{self.sym}_{self.freq} 因子池诊断总览",
+        )
         print(f"因子池诊断结果已保存至目录: {diag_dir}")
         return results
 
@@ -985,13 +952,13 @@ class GPAnalyzer:
                 }
 
     
-    def real_trading_simulation_plot(self,pos,pos_train, fee=0.0005):
+    def real_trading_simulation_plot(self,pos,pos_train, fees_rate=0.0005):
         
-        net_values_train,metrics_train = self.real_trading_simulator(pos_train,'train', fee)
+        net_values_train,metrics_train = self.real_trading_simulator(pos_train,'train', fees_rate)
         pos_index_train = self.train_index
         close_train = self.close_train
 
-        net_values,metrics = self.real_trading_simulator(pos,'test', fee)
+        net_values,metrics = self.real_trading_simulator(pos,'test', fees_rate)
         pos_index = self.test_index
         close_test = self.close_test
         
