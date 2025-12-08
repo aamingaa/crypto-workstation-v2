@@ -26,19 +26,26 @@ from multi_model_strategy import create_strategy_from_yaml
 
 
 # 定义因子表达式
+# factor_expressions = [
+#     'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+#     ,'ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))'
+#     ,'ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd)))'
+#     ,'ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))'
+#     ,'ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))'
+#     ,'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
+#     ,'ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50))))'
+#     ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+#     # ,'ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))'
+#     # ,'TA_SAR(close_macd, ta_dema_55(vol))'
+#     # ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
+#     # ,'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+# ]
+
 factor_expressions = [
-    'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
-    ,'ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))'
-    ,'ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd)))'
-    ,'ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))'
-    ,'ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))'
-    ,'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
-    ,'ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50))))'
-    ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
-    # ,'ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))'
-    # ,'TA_SAR(close_macd, ta_dema_55(vol))'
-    # ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
-    # ,'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+    # 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
+    # ,'ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd)))'
+    'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+    # ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
 ]
 
 # 创建策略

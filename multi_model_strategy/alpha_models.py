@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LassoCV
 from xgboost import XGBRegressor
 import lightgbm as lgb
@@ -35,6 +36,57 @@ class AlphaModelTrainer:
         self.predictions = {}
         self.ensemble_weights = None
         self.training_logs = {}
+        self.pca_model = None
+        self.X_train_raw = None
+        self.X_test_raw = None
+
+    def apply_pca(self, n_components=None, explained_var_ratio=0.95, standardize=False):
+        """
+        对特征做 PCA 降维 / 去相关，并更新 X_train / X_test。
+        
+        Args:
+            n_components (int or None): 主成分个数；None 则按 explained_var_ratio 自动截取
+            explained_var_ratio (float): 若 n_components 为 None，保留累计解释方差达到该比例的主成分
+            standardize (bool): 是否在 PCA 前对特征做简单标准化（均值0、方差1）
+        """
+        print("\n===== 开始执行 PCA 降维 / 去相关 =====")
+        X_train = np.asarray(self.X_train, dtype=float)
+        X_test = np.asarray(self.X_test, dtype=float)
+
+        # 记录原始数据，便于需要时还原
+        self.X_train_raw = X_train.copy()
+        self.X_test_raw = X_test.copy()
+
+        if standardize:
+            mean = X_train.mean(axis=0, keepdims=True)
+            std = X_train.std(axis=0, keepdims=True)
+            std[std == 0] = 1.0
+            X_train = (X_train - mean) / std
+            X_test = (X_test - mean) / std
+
+        if n_components is None:
+            pca_full = PCA()
+            pca_full.fit(X_train)
+            cum_var = np.cumsum(pca_full.explained_variance_ratio_)
+            k = int(np.searchsorted(cum_var, explained_var_ratio) + 1)
+            n_components = max(1, min(k, X_train.shape[1]))
+            print(f"  自动选择主成分个数: {n_components} （累计解释方差比例 ≈ {cum_var[n_components-1]:.4f}）")
+            self.pca_model = PCA(n_components=n_components)
+        else:
+            n_components = min(n_components, X_train.shape[1])
+            self.pca_model = PCA(n_components=n_components)
+
+        self.pca_model.fit(X_train)
+        X_train_pca = self.pca_model.transform(X_train)
+        X_test_pca = self.pca_model.transform(X_test)
+
+        self.X_train = X_train_pca
+        self.X_test = X_test_pca
+        self.selected_factors = [f"PC{i+1}" for i in range(self.X_train.shape[1])]
+
+        print(f"  PCA 完成，特征维度: {X_train.shape[1]} → {self.X_train.shape[1]}")
+        print("===== PCA 结束 =====\n")
+        return self
     
     def train_all_models(self, use_normalized_label=True):
         """

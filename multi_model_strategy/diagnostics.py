@@ -195,6 +195,50 @@ class DiagnosticTools:
         
         return pnl, metrics
     
+    def backtest_single_factor_by_quantile_weights(self, factor_name, weights, data_range='test', n_quantiles=5):
+        """
+        按自定义分箱权重做单因子回测（例如：{0:-1, 3:0.5, 4:1}）。
+        
+        市场假设：
+            因子在不同分箱上的 alpha 能力不同，只在部分分箱交易或赋予不同仓位权重。
+        
+        Args:
+            factor_name (str): 因子名称
+            weights (dict): {quantile_index: weight}，quantile_index 从 0 到 n_quantiles-1
+            data_range (str): 'train' 或 'test'
+            n_quantiles (int): 分位数数量
+        
+        Returns:
+            tuple: (pnl, metrics)
+        """
+        if factor_name not in self.factor_data.columns:
+            print(f"因子 {factor_name} 不在 factor_data 中。")
+            return None
+        
+        train_len = len(self.ret_train)
+        test_len = len(self.ret_test)
+        if data_range == 'train':
+            fac_vals = self.factor_data[factor_name].iloc[:train_len].values
+            pos = self._build_position_by_quantile_weights(fac_vals, weights, n_quantiles)
+            pnl, metrics = self._simulate_trading(pos, 'train')
+        elif data_range == 'test':
+            fac_vals = self.factor_data[factor_name].iloc[-test_len:].values
+            pos = self._build_position_by_quantile_weights(fac_vals, weights, n_quantiles)
+            pnl, metrics = self._simulate_trading(pos, 'test')
+        else:
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        print(f"\n===== 单因子分箱权重回测：{factor_name} | {data_range} 段 =====")
+        print(f"  使用分箱权重: {weights}")
+        for k, v in metrics.items():
+            if "Rate" in k or "Ratio" in k or "Return" in k or "Drawdown" in k:
+                print(f"  {k}: {v:.4f}")
+            else:
+                print(f"  {k}: {v}")
+        print("===== 单因子分箱权重回测结束 =====\n")
+        
+        return pnl, metrics
+    
     def diagnose_top_factors_backtest(self, data_range='test', top_n=5, n_quantiles=5):
         """
         对 |IC| Top N 因子做单因子回测
@@ -365,7 +409,7 @@ class DiagnosticTools:
         print("===== 因子 IC Decay 诊断结束（返回 dict，可用于画图或进一步分析） =====\n")
         return results
     
-    def diagnose_factor_quantile_returns(self, factor_name, data_range='test', n_quantiles=5):
+    def diagnose_factor_quantile_returns(self, factor_name, data_range='test', n_quantiles=5, save_dir=None):
         """
         按因子分位数统计未来收益，用于检查分层单调性和极值组表现。
         
@@ -407,6 +451,33 @@ class DiagnosticTools:
         df["q"] = q
         stats = df.groupby("q")["ret"].agg(["mean", "std", "count"])
         print(stats.to_string(float_format=lambda x: f"{x: .6f}"))
+        
+        # 绘图：每个分位数的平均收益柱状图
+        try:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            stats_plot = stats.copy()
+            stats_plot["mean"].plot(kind="bar", ax=ax)
+            ax.set_title(f"Quantile Returns - {factor_name} | {data_range}")
+            ax.set_xlabel("Quantile (0 = lowest)")
+            ax.set_ylabel("Mean future return")
+            ax.axhline(0, color="black", linewidth=0.8)
+            ax.grid(True, axis="y", linestyle="--", alpha=0.4)
+            plt.tight_layout()
+            
+            if save_dir is not None:
+                save_dir = Path(save_dir)
+                save_dir.mkdir(parents=True, exist_ok=True)
+                fname = f"quantile_returns_{factor_name}_{data_range}.png"
+                # 简单清理文件名中的斜杠等
+                fname = fname.replace("/", "_").replace("\\", "_").replace(" ", "_")
+                (save_dir / fname).unlink(missing_ok=True)
+                plt.savefig(save_dir / fname, dpi=150)
+                plt.close(fig)
+            else:
+                plt.show()
+        except Exception as e:
+            print(f"绘制分位数收益图失败: {e}")
+        
         print("===== 因子分位数收益诊断结束 =====\n")
         return stats
     
@@ -566,7 +637,7 @@ class DiagnosticTools:
         if isinstance(corr_mat, pd.DataFrame):
             corr_mat.to_csv(save_dir / "factor_corr.csv", index=True)
 
-        # 5) 单独绘制若干诊断图
+        # 5) 单独绘制若干诊断图 + 可选：按分箱权重的策略回测
         try:
             # (1) 测试集 |IC| TopK 柱状图
             if isinstance(ic_test, pd.DataFrame) and not ic_test.empty:
@@ -677,6 +748,41 @@ class DiagnosticTools:
             return pos
         pos[q == q.max()] = 1.0
         pos[q == q.min()] = -1.0
+        return pos
+    
+    def _build_position_by_quantile_weights(self, factor_values, weights, n_quantiles=5):
+        """
+        按自定义分箱权重构建仓位。
+        
+        Args:
+            factor_values (array-like): 因子取值
+            weights (dict): {quantile_index: weight}，quantile_index 从 0 到 n_quantiles-1
+        Returns:
+            np.ndarray: 仓位序列
+        """
+        factor_values = np.asarray(factor_values).astype(float)
+        if len(factor_values) == 0:
+            return np.array([], dtype=float)
+        
+        s = pd.Series(factor_values)
+        if s.nunique() <= 1:
+            return np.zeros(len(s), dtype=float)
+        
+        try:
+            q = pd.qcut(s.rank(method='first'), q=n_quantiles, labels=False, duplicates='drop')
+        except ValueError:
+            return np.zeros(len(s), dtype=float)
+        
+        pos = np.zeros(len(s), dtype=float)
+        # quantile_index 范围为 [0, n_quantiles-1]，0 为最低分箱
+        for q_idx, w in weights.items():
+            try:
+                q_idx_int = int(q_idx)
+            except Exception:
+                continue
+            if q_idx_int < 0 or q_idx_int > q.max():
+                continue
+            pos[q == q_idx_int] = float(w)
         return pos
     
     def _simulate_trading(self, pos, data_range):

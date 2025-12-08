@@ -857,6 +857,55 @@ class GPAnalyzer:
             annual_bars=self.annual_bars,
         )
         return diag
+    
+    def run_single_factor_by_quantile_weights(self, exp_pool=None, factor_name_demo: str = None, weights: dict = None, fees_rate=0.0005):
+
+        if exp_pool is None:
+            exp_pool = self.read_and_pick()
+        diag = self.build_diagnostic_tools_from_exp_pool(exp_pool, fees_rate=fees_rate)
+        
+        weights = {2: 1.0, 3: 1.0, 4: 1.0}  # 只是示例
+        # 示例：对某个因子按分箱权重做策略回测并画图
+        factor_name_demo = 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
+        pnl, metrics = diag.backtest_single_factor_by_quantile_weights(
+            factor_name=factor_name_demo,
+            weights=weights,
+            data_range='test',   # 或 'train'
+            n_quantiles=5,
+        )
+
+        try:
+            # 使用测试集索引画出该分箱策略的 PnL 曲线
+            idx = self.test_index
+            if hasattr(idx, "__len__") and len(idx) >= len(pnl):
+                x = idx[-len(pnl):]
+            else:
+                x = range(len(pnl))
+
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(x, pnl, label="PnL (quantile-weighted)")
+            ax.set_title(f"Quantile-weighted PnL - {factor_name_demo}")
+            ax.set_ylabel("Cumulative log PnL")
+            if hasattr(x, "freq") or hasattr(x, "dtype") and "datetime" in str(x.dtype):
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+                ax.xaxis.set_major_locator(mdates.MonthLocator())
+            ax.grid(True, linestyle="--", alpha=0.4)
+            ax.legend()
+            plt.tight_layout()
+
+            diag_dir = Path(self.total_factor_file_dir) / "diagnostics"
+            diag_dir.mkdir(parents=True, exist_ok=True)
+            out_path = diag_dir / f"quantile_backtest_pnl_{factor_name_demo}.png"
+            # 简单清理文件名
+            out_path = Path(str(out_path).replace("/", "_").replace("\\", "_").replace(" ", "_"))
+            plt.savefig(out_path, dpi=150)
+            plt.close(fig)
+            print(f"分箱权重策略 PnL 曲线已保存至: {out_path}")
+        except Exception as e:
+            print(f"绘制定量分箱回测 PnL 图失败: {e}")
+        
+        return pnl, metrics
+    
 
     def run_factor_pool_diagnostics(self, exp_pool=None, fees_rate=0.0005):
         """
@@ -871,6 +920,7 @@ class GPAnalyzer:
         if exp_pool is None:
             exp_pool = self.read_and_pick()
         diag = self.build_diagnostic_tools_from_exp_pool(exp_pool, fees_rate=fees_rate)
+        # results = None
         results = diag.run_full_diagnostics(
             data_range_main='test',
             top_n_ic=min(20, len(exp_pool)),
@@ -887,6 +937,8 @@ class GPAnalyzer:
             title=f"{self.sym}_{self.freq} 因子池诊断总览",
         )
         print(f"因子池诊断结果已保存至目录: {diag_dir}")
+    
+
         return results
 
     def real_trading_simulator(self,pos:np.array, data_range = 'test', fee = 0.0005):

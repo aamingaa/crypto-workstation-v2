@@ -600,6 +600,9 @@ class QuantTradingStrategy:
         self.alpha_trainer = AlphaModelTrainer(
             X_train, X_test, self.y_train, self.y_test, selected_factors
         )
+
+        # self.alpha_trainer.apply_pca(explained_var_ratio=0.95, standardize=True)
+
         
         self.alpha_trainer.train_all_models(use_normalized_label=True)
         self.alpha_trainer.make_predictions()
