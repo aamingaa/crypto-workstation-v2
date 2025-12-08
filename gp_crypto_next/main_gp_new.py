@@ -882,7 +882,7 @@ class GPAnalyzer:
             else:
                 x = range(len(pnl))
 
-            fig, ax = plt.subplots(figsize=(10, 4))
+            fig, ax = plt.subplots(figsize=(12, 4))
             ax.plot(x, pnl, label="PnL (quantile-weighted)")
             ax.set_title(f"Quantile-weighted PnL - {factor_name_demo}")
             ax.set_ylabel("Cumulative log PnL")
@@ -890,7 +890,35 @@ class GPAnalyzer:
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
                 ax.xaxis.set_major_locator(mdates.MonthLocator())
             ax.grid(True, linestyle="--", alpha=0.4)
-            ax.legend()
+            ax.legend(loc="upper left")
+
+            # 在图上标注关键绩效指标
+            try:
+                ann_ret = metrics.get("Annual Return", np.nan)
+                sharpe = metrics.get("Sharpe Ratio", np.nan)
+                max_dd = metrics.get("MAX_Drawdown", np.nan)
+                win_rate = metrics.get("Win Rate", np.nan)
+                turnover = metrics.get("Turnover_per_bar", np.nan)
+                annotation_lines = [
+                    f"Annual Return: {ann_ret:.4f}",
+                    f"Sharpe Ratio: {sharpe:.4f}",
+                    f"MAX Drawdown: {max_dd:.4f}",
+                    f"Win Rate: {win_rate:.4f}",
+                    f"Turnover/bar: {turnover:.4f}",
+                ]
+                annotation_text = "\n".join(annotation_lines)
+                ax.annotate(
+                    annotation_text,
+                    xy=(0.99, 0.01),
+                    xycoords='axes fraction',
+                    va='bottom',
+                    ha='right',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.6),
+                    fontsize=9,
+                )
+            except Exception:
+                pass
+
             plt.tight_layout()
 
             diag_dir = Path(self.total_factor_file_dir) / "diagnostics"

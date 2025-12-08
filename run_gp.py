@@ -51,7 +51,7 @@ def main() -> None:
 #        n_quantiles=5,
 #    )
     
-    print(diag_results)
+    # print(diag_results)
 
 if __name__ == "__main__":
     main()
