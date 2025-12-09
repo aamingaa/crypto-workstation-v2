@@ -93,21 +93,34 @@ strategy = create_strategy_from_yaml(
 strategy.run_full_pipeline(
     weight_method='equal',       # 'equal' 或 'sharpe'
     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
-    enable_factor_selection=False
+    enable_factor_selection=False,
+    enable_quantile_features=True,   # 新增这一行
 )
 
 # 查看结果并保存图像
 strategy.plot_results('Ensemble')
 
-start_time = '2025-07-01 00:00:00'
-end_time = '2025-08-30 00:00:00'
 
-pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
-    start_time=start_time,
-    end_time=end_time,
-    model_name='Ensemble',   # 或其它模型名 sharpe Ensemble
-    data_range='test',       # 'train' 或 'test'
-)
+# factor_name = 'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+
+# # 在训练集上，对默认几种分箱权重方案做回测，并按 Sharpe 排序
+# df_schemes = strategy.optimize_factor_quantile_weights(
+#     factor_name=factor_name,
+#     data_range='train',      # 或 'test'，看你想在哪一段评估
+#     n_quantiles=5,
+#     metric_key='Sharpe Ratio'
+# )
+
+
+# start_time = '2025-07-01 00:00:00'
+# end_time = '2025-08-30 00:00:00'
+
+# pnl_sub, metrics_sub = strategy.backtest_subperiod_by_time(
+#     start_time=start_time,
+#     end_time=end_time,
+#     model_name='Ensemble',   # 或其它模型名 sharpe Ensemble
+#     data_range='test',       # 'train' 或 'test'
+# )
 
 
 # strategy.plot_regime_and_risk('Ensemble')

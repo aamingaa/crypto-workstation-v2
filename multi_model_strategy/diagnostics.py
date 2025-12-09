@@ -784,6 +784,29 @@ class DiagnosticTools:
                 continue
             pos[q == q_idx_int] = float(w)
         return pos
+
+    def build_quantile_weighted_signal(self, factor_name, weights, n_quantiles=5):
+        """
+        基于分箱权重，为指定因子生成一条完整的 signal 序列（train+test 拼在一起）。
+        
+        Args:
+            factor_name (str): 因子名称
+            weights (dict): {quantile_index: weight}，quantile_index 从 0 到 n_quantiles-1
+            n_quantiles (int): 分箱数量
+        
+        Returns:
+            pd.Series: index 与 factor_data 对齐的 signal（长度与 factor_data 相同）
+        """
+        if factor_name not in self.factor_data.columns:
+            raise ValueError(f"因子 {factor_name} 不在 factor_data 中。")
+        
+        fac_vals_all = self.factor_data[factor_name].values
+        pos_all = self._build_position_by_quantile_weights(
+            factor_values=fac_vals_all,
+            weights=weights,
+            n_quantiles=n_quantiles,
+        )
+        return pd.Series(pos_all, index=self.factor_data.index, name=f"{factor_name}_qw")
     
     def _simulate_trading(self, pos, data_range):
         """简化的交易模拟（复用 BacktestEngine 逻辑）"""

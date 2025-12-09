@@ -12,6 +12,8 @@ import joblib
 import pickle
 import matplotlib.pyplot as plt
 import os
+from typing import Optional, List
+
 
 # 确保项目路径和 gp_crypto_next 都在 sys.path
 project_root = Path(__file__).resolve().parent.parent
@@ -169,7 +171,7 @@ class QuantTradingStrategy:
     
 
     def run_full_pipeline(self, is_pre_load=False, weight_method='equal', normalize_method=None,
-                         enable_factor_selection=False):
+                         enable_factor_selection=False, enable_quantile_features=False):
         """
         运行完整策略流程
         
@@ -216,6 +218,16 @@ class QuantTradingStrategy:
         
         # 4. 因子评估
         self._evaluate_factors(normalize_method, enable_factor_selection)
+        
+        # 4.5（可选）：基于分箱权重为因子生成附加特征
+        if enable_quantile_features:
+            print("ℹ️ 启用因子分箱权重特征生成（auto_add_quantile_weighted_features）")
+            self.auto_add_quantile_weighted_features(
+                factor_names=None,
+                data_range='train',
+                n_quantiles=5,
+                metric_key='Sharpe Ratio',
+            )
         
         # 5. 模型训练与预测
         self._train_and_predict(weight_method)
@@ -915,6 +927,185 @@ class QuantTradingStrategy:
                 data_range, top_n
             )
         return None
+    
+    def optimize_factor_quantile_weights(
+        self,
+        factor_name: str,
+        data_range: str = 'train',
+        n_quantiles: int = 5,
+        schemes: dict = None,
+        metric_key: str = 'Sharpe Ratio',
+    ) -> pd.DataFrame:
+        """
+        基于少量预设的分箱权重方案，对单因子做「按分箱权重」策略回测，用于自动选出较优方案。
+        
+        Args:
+            factor_name (str): 因子名称（必须在 factor_data 列中）
+            data_range (str): 'train' 或 'test'，用于评估权重方案
+            n_quantiles (int): 分箱数量（与 DiagnosticTools 中保持一致）
+            schemes (dict or None): {scheme_name: {quantile_index: weight}}；
+                                   若为 None，则使用若干常见模板
+            metric_key (str): 评价指标（如 'Sharpe Ratio', 'Annual Return', 'Calmar Ratio'）
+        
+        Returns:
+            pd.DataFrame: 每个方案对应的回测指标，按 metric_key 降序排序
+        """
+        # 确保 diagnostic_tools 已初始化；若尚未初始化，则基于当前 factor_engine/data_module 构建
+        if self.diagnostic_tools is None:
+            if self.factor_engine is None or self.data_module is None:
+                print("diagnostic_tools 尚未初始化，且因子/数据模块为空，请先运行 _load_data 和 _evaluate_factors。")
+                return None
+            factor_data = self.factor_engine.get_factor_data()
+            selected_factors = self.factor_engine.get_selected_factors()
+            self.diagnostic_tools = DiagnosticTools(
+                factor_data,
+                selected_factors,
+                self.ret_train,
+                self.ret_test,
+                self.y_train,
+                self.y_test,
+                self.data_module.open_train,
+                self.data_module.close_train,
+                self.data_module.open_test,
+                self.data_module.close_test,
+                self.config['fees_rate'],
+                self.config['annual_bars'],
+            )
+        
+        if schemes is None:
+            # 一些常见、形状合理的模板（可按需扩展）
+            schemes = {
+                "long_short_extreme": {0: -1.0, n_quantiles - 1: 1.0},      # 多最高、空最低
+                "long_only_extreme": {n_quantiles - 1: 1.0},                # 只多最高
+                "long_middle": {n_quantiles // 2: 1.0},                     # 只多中间
+                "long_middle_high": {n_quantiles // 2: 0.5, n_quantiles - 1: 1.0},  # 中高权重
+            }
+        
+        records = []
+        for scheme_name, weights in schemes.items():
+            res = self.diagnostic_tools.backtest_single_factor_by_quantile_weights(
+                factor_name=factor_name,
+                weights=weights,
+                data_range=data_range,
+                n_quantiles=n_quantiles,
+            )
+            if res is None:
+                continue
+            _, metrics = res
+            rec = {
+                "factor": factor_name,
+                "scheme": scheme_name,
+            }
+            rec.update(metrics)
+            records.append(rec)
+        
+        if not records:
+            print(f"未能对因子 {factor_name} 评估任何分箱权重方案。")
+            return None
+        
+        df = pd.DataFrame(records)
+        if metric_key in df.columns:
+            df = df.sort_values(metric_key, ascending=False)
+        else:
+            print(f"⚠️ 指标 {metric_key} 不在结果列中，实际列: {list(df.columns)}，返回未排序结果。")
+        
+        # 自动保存一份 csv 便于后续查看
+        try:
+            out_dir = Path(self.data_module.get_total_factor_file_dir()) / "diagnostics"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / f"quantile_weight_schemes_{factor_name}.csv"
+            # 简单清理文件名
+            out_path = Path(str(out_path).replace("/", "_").replace("\\", "_").replace(" ", "_"))
+            df.to_csv(out_path, index=False)
+            print(f"分箱权重方案评估结果已保存至: {out_path}")
+        except Exception as e:
+            print(f"保存分箱权重方案评估结果失败: {e}")
+        
+        return df
+
+    def add_quantile_weighted_feature(
+        self,
+        factor_name: str,
+        weights: dict,
+        n_quantiles: int = 5,
+        new_name: str  = None,
+    ):
+        """
+        使用分箱权重，将原始因子加工成一条新的 signal 特征，并加入因子数据/选中因子列表。
+        """
+        if self.factor_engine is None:
+            print("factor_engine 尚未初始化，请先运行 _evaluate_factors。")
+            return
+        if self.diagnostic_tools is None:
+            print("diagnostic_tools 尚未初始化，请先调用 optimize_factor_quantile_weights 或构建 DiagnosticTools。")
+            return
+
+        factor_data = self.factor_engine.get_factor_data()
+        sig = self.diagnostic_tools.build_quantile_weighted_signal(
+            factor_name=factor_name,
+            weights=weights,
+            n_quantiles=n_quantiles,
+        )
+
+        col_name = new_name or f"{factor_name}_qw"
+        factor_data[col_name] = sig.values
+        self.factor_engine.factor_data = factor_data
+
+        selected = self.factor_engine.get_selected_factors()
+        if col_name not in selected:
+            selected.append(col_name)
+            self.factor_engine.selected_factors = selected
+
+        print(f"已添加分箱权重特征列: {col_name}")
+
+    def auto_add_quantile_weighted_features(
+        self,
+        factor_names: Optional[List[str]] = None,
+        data_range: str = 'train',
+        n_quantiles: int = 5,
+        metric_key: str = 'Sharpe Ratio',
+    ):
+        """
+        对一批因子自动搜索若干分箱权重方案，在指定区间上按 metric_key 选出最佳方案，
+        并将对应的分箱权重 signal 作为新特征加入因子矩阵。
+        """
+        if self.factor_engine is None:
+            print("factor_engine 尚未初始化，请先运行 _evaluate_factors。")
+            return
+
+        # 默认对当前选中的所有因子做处理
+        if factor_names is None:
+            factor_names = self.factor_engine.get_selected_factors()
+
+        # 使用与 optimize_factor_quantile_weights 相同的默认 schemes
+        base_schemes = {
+            "long_short_extreme": {0: -1.0, n_quantiles - 1: 1.0},
+            "long_only_extreme": {n_quantiles - 1: 1.0},
+            "long_middle": {n_quantiles // 2: 1.0},
+            "long_middle_high": {n_quantiles // 2: 0.5, n_quantiles - 1: 1.0},
+        }
+
+        for f in factor_names:
+            df = self.optimize_factor_quantile_weights(
+                factor_name=f,
+                data_range=data_range,
+                n_quantiles=n_quantiles,
+                schemes=base_schemes,
+                metric_key=metric_key,
+            )
+            if df is None or df.empty:
+                continue
+            best_scheme_name = df.iloc[0]["scheme"]
+            weights = base_schemes.get(best_scheme_name)
+            if weights is None:
+                continue
+            new_name = f"{f}_qw_{best_scheme_name}"
+            self.add_quantile_weighted_feature(
+                factor_name=f,
+                weights=weights,
+                n_quantiles=n_quantiles,
+                new_name=new_name,
+            )
     
     # ========== 保存接口 ==========
     

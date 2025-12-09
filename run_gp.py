@@ -33,14 +33,15 @@ def main() -> None:
     fees_rate = 0.0005
     analyzer.real_trading_simulation_plot(pos_test, pos_train, fees_rate=fees_rate)
 
-    # diag_results = analyzer.run_factor_pool_diagnostics(exp_pool, fees_rate=fees_rate)
-    # print(diag_results)
+    diag_results = analyzer.run_factor_pool_diagnostics(exp_pool, fees_rate=fees_rate)
+    print(diag_results)
 
-
-    factor_name_demo = 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
-    weights = {2: 1.0, 3: 1.0, 4: 1.0}
-    pnl, metrics = analyzer.run_single_factor_by_quantile_weights(exp_pool, factor_name_demo=factor_name_demo, weights=weights, fees_rate=fees_rate)
-    print(pnl, metrics)
+    # factor_name_demo = 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
+    
+    # factor_name_demo = 'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+    # weights = {0: -1, 4: 1.0} 
+    # pnl, metrics = analyzer.run_single_factor_by_quantile_weights(exp_pool, factor_name_demo=factor_name_demo, weights=weights, fees_rate=fees_rate)
+    # print(pnl, metrics)
 
 
 

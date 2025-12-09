@@ -864,9 +864,7 @@ class GPAnalyzer:
             exp_pool = self.read_and_pick()
         diag = self.build_diagnostic_tools_from_exp_pool(exp_pool, fees_rate=fees_rate)
         
-        weights = {2: 1.0, 3: 1.0, 4: 1.0}  # 只是示例
         # 示例：对某个因子按分箱权重做策略回测并画图
-        factor_name_demo = 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
         pnl, metrics = diag.backtest_single_factor_by_quantile_weights(
             factor_name=factor_name_demo,
             weights=weights,
