@@ -94,7 +94,7 @@ strategy.run_full_pipeline(
     weight_method='equal',       # 'equal' 或 'sharpe'
     normalize_method=None,       # None, 'simple', 'robust', 'zscore'
     enable_factor_selection=False,
-    enable_quantile_features=True,   # 新增这一行
+    enable_quantile_features=False,   # 新增这一行
 )
 
 # 查看结果并保存图像
