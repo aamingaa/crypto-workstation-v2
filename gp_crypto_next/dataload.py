@@ -1068,6 +1068,24 @@ def data_prepare_coarse_grain_rolling_offset(
     rolling_step_minutes = pd.Timedelta(rolling_step).total_seconds() / 60
     num_offsets = int(coarse_period_minutes / rolling_step_minutes)
     
+    # 1. 定义预测窗口长度 (例如 2小时 = 8个15min)
+    horizon_bars = int(y_train_ret_period) # 假设为 8
+    
+    # 2. 计算前瞻平滑价格 (Forward TWAP)
+    # 使用 FixedForwardWindowIndexer 极其高效，计算未来 8 个 bar 的均价
+    # 逻辑：t 时刻的值 = Mean(Price[t+1] ... Price[t+8])
+    # 注意：shift(-1) 是因为 rolling 默认包含自身，我们需要的是未来的
+    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=horizon_bars)
+    z_raw['fwd_mean_c'] = z_raw['c'].shift(-1).rolling(window=indexer).mean()
+    
+    # 3. 计算当前波动率 (Volatility) 用于标准化
+    # 例如使用过去 24 小时的波动率 (24h * 4 = 96 bars)
+    # 加上 1e-8 防止除以零
+    z_raw['curr_vol'] = z_raw['c'].pct_change().rolling(window=96).std() + 1e-8
+    
+    print(f"  ✓ 预计算完成：未来均价(Smoothed) 与 当前波动率(Vol)")
+    # ==============================================================================
+
     if use_fine_grain_precompute:
         print(f"\n🚀 启用粗粒度预计算优化（使用offset参数）") 
         print(f"粗粒度周期: {coarse_grain_period} ({coarse_period_minutes}分钟)")
@@ -1130,37 +1148,62 @@ def data_prepare_coarse_grain_rolling_offset(
             features_df = base_feature.init_feature_df
 
             row_timestamps = features_df.index
-            decision_timestamps = row_timestamps + pd.to_timedelta(prediction_horizon_td)
-            
-            # 向量化获取当前时刻的价格
-            t_prices = z_raw['c'].reindex(decision_timestamps)
-            o_prices = z_raw['o'].reindex(decision_timestamps)
-
+            decision_timestamps = row_timestamps + pd.to_timedelta(coarse_grain_period)
             # 向量化计算未来时刻
             prediction_timestamps = decision_timestamps + prediction_horizon_td
+
+            # # 向量化获取当前时刻的价格
+            # t_prices = z_raw['c'].reindex(decision_timestamps)
+            # o_prices = z_raw['o'].reindex(decision_timestamps)
             
-            # 向量化获取未来时刻的价格（越界自动为nan）
-            t_future_prices = z_raw['c'].reindex(prediction_timestamps)
+            # # 向量化获取未来时刻的价格（越界自动为nan）
+            # t_future_prices = z_raw['c'].reindex(prediction_timestamps)
             
-            # 向量化计算收益率
-            return_p = (t_future_prices.values / t_prices.values)
-            return_f = np.log(return_p)
+            # # 向量化计算收益率
+            # return_p = (t_future_prices.values / t_prices.values)
+            # return_f = np.log(return_p)
+            
+            # ==============================================================================
+            # 🆕 第二步：向量化获取预计算好的 "平滑 Label"
+            # ==============================================================================
+            
+            # 1. 获取当前时刻的价格 和 波动率
+            # reindex 会自动对齐时间，非常安全
+            t_prices = z_raw['c'].reindex(decision_timestamps).values
+            t_vols = z_raw['curr_vol'].reindex(decision_timestamps).values
+            
+            # 2. 获取 "平滑后的未来价格" (注意：直接取 decision_timestamps 的值即可)
+            # 因为我们在 z_raw['fwd_mean_c'] 里已经存好了 "未来8根K线的均价"
+            t_future_smooth = z_raw['fwd_mean_c'].reindex(decision_timestamps).values
+            
+            # 3. 计算 Log Return (Smoothed)
+            # 逻辑：ln(未来均价 / 当前价格)
+            raw_log_ret = np.log(t_future_smooth / t_prices)
+            
+            # 4. 波动率标准化 (Vol-Scaling)
+            # 逻辑：收益率 / 波动率 = 类似夏普比率的分数
+            # 这就是你要的 "Vol-Scaled Label"
+            scaled_label = raw_log_ret / t_vols
+            
+            # 存入 DataFrame
+            features_df['feature_offset'] = offset.total_seconds() / 60            
+            # ==============================================================================
             
             # 将标签添加到features_df
             features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
             features_df['decision_timestamps'] = decision_timestamps
             features_df['prediction_timestamps'] = prediction_timestamps
             features_df['t_price'] = t_prices.values
-            features_df['o_price'] = o_prices.values
-            features_df['t_future_price'] = t_future_prices.values
-            features_df['return_p'] = return_p
-            features_df['return_f'] = return_f
+            # features_df['o_price'] = o_prices.values
+            # features_df['t_future_price'] = t_future_prices.values
+            features_df['t_future_price'] = t_future_smooth
+            features_df['return_f'] = scaled_label
 
-            # if i == 2 or i == 6:
-            #     print(f"组{i}的特征: {features_df.head()}")
+            valid_mask = ~np.isnan(features_df['return_f'])
+            features_df_mask = features_df[valid_mask]
 
-            coarse_features_dict[offset] = features_df
-            samples.append(features_df)
+            coarse_features_dict[offset] = features_df_mask
+            samples.append(features_df_mask)
 
             print(f"  ✓ 组{i}完成: {len(features_df)} 个桶, {len(features_df.columns)} 个特征")
         
