@@ -60,7 +60,7 @@ gp_settings:
   generations: 3
   tournament_size: 88
   const_range: null
-  init_depth: [2, 5]
+  init_depth: [1, 3]
   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
   parsimony_coefficient: 0.0005
   p_crossover: 0.8
@@ -79,7 +79,7 @@ gp_settings:
 #   generations: 3
 #   tournament_size: 888
 #   const_range: null
-#   init_depth: [1, 3]
+#   init_depth: [2, 4]
 #   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold'
 #   parsimony_coefficient: 0.0005
 #   p_crossover: 0.8
