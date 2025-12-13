@@ -3,3 +3,4 @@ gp_crypto_next/gp_models/
 output/
 # ETHUSDT_*/
 mom_*/
+tools/tadis2.py
