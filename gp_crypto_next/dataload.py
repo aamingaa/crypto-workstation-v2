@@ -1147,35 +1147,26 @@ def data_prepare_coarse_grain_rolling_offset(
                 (coarse_bars.index <= original_end)
             ]
 
-
-            # print(f"check offset{offset}, z_raw_copy.index[0:20] : {z_raw_copy[['o','h','l','c']].index[0:20]}, coarse_bars.index[0:5] : {coarse_bars[['o','h','l','c']].index[0:5]}")
-            # 设 coarse_grain_period = 2h, rolling_step = 15min, y_train_ret_period = 8
-            # 则 prediction_horizon_td = y_train_ret_period * rolling_step = 8 * 15min = 2h
-            #
-            # 行索引 row_timestamps = 10:00 （对应粗粒度桶 [10:00, 12:00) 的左端点）
-            #   ├─ 特征桶(bar数据): [10:00, 12:00)
-            #   ├─ 特征数据来源: [10:00 - rolling_w ... 12:00)（只用历史，不用未来）
-            #   └─ 归一化窗口: [10:00 - rolling_w ... 10:00]
-            #
-            # decision_timestamps = row_timestamps + prediction_horizon_td = 12:00
-            #   ├─ 开仓价: 12:00 的价格（z_raw['o']/['c']）
-            #   └─ 此时 [10:00, 12:00) 桶及其历史特征已全部可见
-            #
-            # prediction_timestamps = decision_timestamps + prediction_horizon_td = 14:00
-            #   └─ 平仓价: 14:00 的价格
-            #
-            # 标签收益率定义为从决策点到未来 prediction_horizon_td 的收益:
-            #   return_p = price(14:00) / price(12:00)
-            #   return_f = log(return_p)
-            
             # 计算特征
             base_feature = originalFeature.BaseFeature(
                 coarse_bars.copy(), 
                 include_categories=include_categories, 
                 rolling_zscore_window=int(rolling_w / num_offsets)
             )
-            features_df = base_feature.init_feature_df
 
+            features_df = base_feature.init_feature_df
+            
+            # 说明：
+            # - z_raw 是 15m K 线（index 为 open_time）。
+            # - coarse_bars 是对 z_raw 按 coarse_grain_period（如 2h）resample(closed='left', label='left', offset=...) 得到的粗粒度桶；
+            #   其 index 同样是桶的 left label（也就是桶的 open_time / 起始时刻 t0）。
+            # - features_df.index (= row_timestamps) 表示粗桶起始时刻 t0（例如 10:00）。
+            #   该行特征使用的是区间 [t0, t0 + coarse_grain_period) 的聚合结果；并且 BaseFeature 内的 rolling_zscore_window 是“粗桶行数”，
+            #   pandas rolling(std) 默认包含当前行（窗口是右对齐、含当前点）。
+            # - decision_timestamps = t0 + coarse_grain_period（例如 12:00），代表桶结束/决策时刻。
+            # - prediction_timestamps = decision_timestamps + rolling_step * y_train_ret_period（例如 rolling_step=15m 且 y_train_ret_period=8 时为 14:00）。
+            # - 当前价(用于 label 分母)取决策点刚结束的那根 15m K 线的 close：current_data_timestamps = decision_timestamps - 15m
+            #   （例如 11:45，对应区间 [11:45, 12:00) 的 close）。
             row_timestamps = features_df.index
            
             # 1. 计算决策时间 (物理时间 12:00)
@@ -1189,23 +1180,11 @@ def data_prepare_coarse_grain_rolling_offset(
             # 向量化计算未来时刻
             prediction_timestamps = decision_timestamps + prediction_horizon_td
 
-            # # 向量化获取当前时刻的价格
-            # t_prices = z_raw['c'].reindex(decision_timestamps)
-            # o_prices = z_raw['o'].reindex(decision_timestamps)
-            
-            # # 向量化获取未来时刻的价格（越界自动为nan）
-            # t_future_prices = z_raw['c'].reindex(prediction_timestamps)
-            
-            # # 向量化计算收益率
-            # return_p = (t_future_prices.values / t_prices.values)
-            # return_f = np.log(return_p)
-            
             # ==============================================================================
             # 🆕 第二步：向量化获取预计算好的 "平滑 Label"
             # ==============================================================================
             
             # 1. 获取当前时刻的价格 和 波动率
-            # reindex 会自动对齐时间，非常安全
             t_prices = z_raw['c'].reindex(current_data_timestamps).values
             o_prices = z_raw['o'].reindex(current_data_timestamps).values
             
@@ -1350,8 +1329,6 @@ def data_prepare_coarse_grain_rolling_offset(
         X_all = X_all.values
         X_train = X_train.values
         X_test = X_test.values
-    elif output_format == 'dataframe':
-        pass
     else:
         raise ValueError(f"output_format 应为 'ndarry' 或 'dataframe'，当前为 {output_format}")
     
