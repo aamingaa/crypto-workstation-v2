@@ -982,6 +982,35 @@ def data_prepare(sym,
 #             feature_names, open_train, open_test, close_train, close_test,
 #             df_samples.index, ohlc_aligned, y_p_train_origin, y_p_test_origin)
 
+def robust_label_construction(prices, volatility, window=4):
+    """
+    prices: 收盘价序列 (pd.Series)
+    volatility: 对应的波动率序列 (如 24h ATR 或 StdDev)
+    window: 跨期窗口 (比如预测未来 4 小时)
+    """
+    # 1. 跨期平滑 (Forward TWAP)
+    # 计算未来 window 小时的平均价格
+    # shift(-window) 是为了让数据对齐到当前时刻 t
+    # 也就是：t 时刻的 label 包含了 t+1 到 t+window 的信息
+    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window)
+    future_mean_price = prices.rolling(window=indexer).mean()
+    
+    # 计算 "均价收益率"
+    # 这里 shift(-1) 是因为 rolling mean 包含自身，通常我们要看未来的
+    # 简单的做法：直接用 rolling mean 对应的 return
+    raw_label = np.log(future_mean_price / prices)
+    
+    # 2. 波动率标准化 (Vol-Scaling)
+    # 防止模型只学高波动时期
+    scaled_label = raw_label / volatility
+    
+    # 3. 去极值 (Winsorization - 可选，GaussRank前通常不需要，但为了保险)
+    # clip 到 +/- 4倍标准差范围
+    # scaled_label = scaled_label.clip(-4, 4)
+    
+    # 4. 之后再接你的 Gauss Rank ...
+    return scaled_label
+
 
 def data_prepare_coarse_grain_rolling_offset(
         sym: str, 
@@ -1148,7 +1177,15 @@ def data_prepare_coarse_grain_rolling_offset(
             features_df = base_feature.init_feature_df
 
             row_timestamps = features_df.index
+           
+            # 1. 计算决策时间 (物理时间 12:00)
             decision_timestamps = row_timestamps + pd.to_timedelta(coarse_grain_period)
+
+            # 2. 【核心修正】计算在 z_raw (Open Time Index) 中对应的“当前行”
+            # 如果决策时间是 12:00，我们需要取 11:45 开始的那根 K 线 (因为它在 12:00 结束)
+            lookup_offset = pd.Timedelta(rolling_step) # 例如 15min
+            current_data_timestamps = decision_timestamps - lookup_offset
+            
             # 向量化计算未来时刻
             prediction_timestamps = decision_timestamps + prediction_horizon_td
 
@@ -1169,16 +1206,23 @@ def data_prepare_coarse_grain_rolling_offset(
             
             # 1. 获取当前时刻的价格 和 波动率
             # reindex 会自动对齐时间，非常安全
-            t_prices = z_raw['c'].reindex(decision_timestamps).values
-            t_vols = z_raw['curr_vol'].reindex(decision_timestamps).values
+            t_prices = z_raw['c'].reindex(current_data_timestamps).values
+            o_prices = z_raw['o'].reindex(current_data_timestamps).values
             
-            # 2. 获取 "平滑后的未来价格" (注意：直接取 decision_timestamps 的值即可)
-            # 因为我们在 z_raw['fwd_mean_c'] 里已经存好了 "未来8根K线的均价"
+            t_vols = z_raw['curr_vol'].reindex(current_data_timestamps).values
+            
+            # 2. 获取 "平滑后的未来价格"
+            # 逻辑：Label = ln(未来 / 当前)
+            # "未来" 是从 12:00 开始算的。z_raw.loc['12:00'] 正好代表 [12:00, 12:15) 及其后续
+            # 所以，未来的取值 直接用 decision_timestamps (12:00) 是对的！
+            # 解释：z_raw['fwd_mean_c'] 在 12:00 这一行，存的是 shift(-1) 后的均值
+            #      即 Mean(Price[12:15], Price[12:30]...)。这正是我们要的 "决策点之后的未来"
             t_future_smooth = z_raw['fwd_mean_c'].reindex(decision_timestamps).values
             
             # 3. 计算 Log Return (Smoothed)
             # 逻辑：ln(未来均价 / 当前价格)
-            raw_log_ret = np.log(t_future_smooth / t_prices)
+            return_p = t_future_smooth / t_prices
+            raw_log_ret = np.log(return_p)
             
             # 4. 波动率标准化 (Vol-Scaling)
             # 逻辑：收益率 / 波动率 = 类似夏普比率的分数
@@ -1193,11 +1237,11 @@ def data_prepare_coarse_grain_rolling_offset(
             features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
             features_df['decision_timestamps'] = decision_timestamps
             features_df['prediction_timestamps'] = prediction_timestamps
-            features_df['t_price'] = t_prices.values
-            # features_df['o_price'] = o_prices.values
-            # features_df['t_future_price'] = t_future_prices.values
+            features_df['t_price'] = t_prices
+            features_df['o_price'] = o_prices
             features_df['t_future_price'] = t_future_smooth
             features_df['return_f'] = scaled_label
+            features_df['return_p'] = return_p
 
             valid_mask = ~np.isnan(features_df['return_f'])
             features_df_mask = features_df[valid_mask]

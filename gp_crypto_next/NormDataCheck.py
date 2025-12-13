@@ -90,6 +90,42 @@ def norm(data, window = 500, clip=6):
     
     return np.clip(result, -clip, clip)
 
+def vectorized_gauss_rank_norm(data, window=500, clip=6):
+    """
+    向量化的高斯秩变换
+    """
+    s = pd.Series(data)
+    
+    # 1. 滚动排序 (pct=True 直接得到 0-1 之间的 quantile)
+    # method='average' 处理平局，或者可以用 'random' 模拟你的抖动逻辑
+    # 但为了完全复刻你的随机抖动，我们需要手动加噪
+    
+    # 加入微小随机噪声进行 Dithering (替代原本复杂的 random_seq 逻辑)
+    # 1e-6 的噪声不会改变原本的大小关系，只会打乱绝对相等的值
+    np.random.seed(42)
+    noise = np.random.randn(len(s)) * 1e-9 
+    s_noisy = s + noise
+    
+    # 计算滚动 Rank百分比
+    # 注意：pandas 的 rolling rank 比较慢，可以用 numba 优化，但比纯 python 快
+    # 这里 rank 后的值在 [1/N, 1.0] 之间
+    rolling_rank = s_noisy.rolling(window=window).rank(pct=True)
+    
+    # 2. 避免无穷大 (Inf)
+    # 如果 rank 是 1.0，norm.ppf 会是 Inf。我们需要将其限制在 (0, 1) 开区间
+    # 你的代码用的是 rank / (window + 1)，这很聪明
+    # 这里我们做一个修正
+    rolling_rank = rolling_rank * (window / (window + 1)) + (1 / (window + 1)) * 0.5
+    
+    # 3. 逆正态变换 (Inverse CDF)
+    # scipy.stats.norm.ppf 就是标准正态分布的逆函数 (Percent point function)
+    result = norm.ppf(rolling_rank)
+    
+    # 4. 填充 NaN (前 window 个数据) 并 Clip
+    result = np.nan_to_num(result, nan=0.0)
+    return np.clip(result, -clip, clip)
+
+
 def inverse_norm(normalized_data, original_data, window=2000):
     """
     将标准化后的数据转换回原始分布的近似值
