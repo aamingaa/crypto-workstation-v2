@@ -4,3 +4,5 @@ output/
 # ETHUSDT_*/
 mom_*/
 tools/tadis2.py
+# tools/tadis-download.py
+tools/tardis_secrets.py

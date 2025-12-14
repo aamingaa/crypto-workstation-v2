@@ -30,23 +30,23 @@
 
 - **超短期相对强度（Short-Term ROC Spread）**
 
-\[
+$$
 Factor_1 = \text{ts\_delta}(Close, \tau_1) - \text{ts\_delta}(Close, \tau_2)
-\]
+$$
 
 - 逻辑：比较短周期（如 \(\tau_1 = 4\) 小时）与中周期（如 \(\tau_2 = 12\) 小时）的涨跌幅差异；短期涨幅显著高于长期 → 动量在加速。
 - **标准化价格动量（Vol-Normalized Momentum）**
 
-\[
+$$
 Factor_2 = \frac{Close - \text{ts\_delay}(Close, \tau)}{\text{ts\_std}(Return, \tau)}
-\]
+$$
 
 - 逻辑：收益率 ÷ 波动率，刻画“单位风险的趋势强度”；涨得多且稳（分母小） → 高质量趋势。
 - **路径效率（Path Purity）**
 
-\[
+$$
 Factor_3 = \frac{\text{abs}(Close - \text{ts\_delay}(Close, 24))}{\text{ts\_sum}(\text{abs}(Close - \text{ts\_delay}(Close, 1)), 24)}
-\]
+$$
 
 - 逻辑：衡量过去 24 小时是“直线趋势”还是“来回震荡”；值接近 1 → 几乎直线拉升/下跌 → 纯净动量。
 
@@ -54,9 +54,9 @@ Factor_3 = \frac{\text{abs}(Close - \text{ts\_delay}(Close, 24))}{\text{ts\_sum}
 
 - **增仓动量（Open Interest Momentum）**
 
-\[
+$$
 Factor_4 = \text{ts\_delta}(OpenInterest, 4) \times \text{sign}(\text{ts\_delta}(Close, 4))
-\]
+$$
 
 - 逻辑：
 
@@ -64,9 +64,9 @@ Factor_4 = \text{ts\_delta}(OpenInterest, 4) \times \text{sign}(\text{ts\_delta}
   - 价格上涨 + OI 下降 → 空头回补主导，更偏“挤空反弹”，动量质量差。
 - **主动流强度（Taker Flow Strength）**
 
-\[
+$$
 Factor_5 = \text{ts\_mean}(TakerBuyVolume - TakerSellVolume, 6)
-\]
+$$
 
 - 逻辑：过去 6 小时净主动买入（或卖出）的强度；持续净买入 → 趋势有微观资金支撑。
 
@@ -74,9 +74,9 @@ Factor_5 = \text{ts\_mean}(TakerBuyVolume - TakerSellVolume, 6)
 
 - **波动率过滤器（Vol Filter）**
 
-\[
+$$
 Filter = \frac{\text{ts\_std}(Return, 12)}{\text{ts\_std}(Return, 72)}
-\]
+$$
 
 - 逻辑：短期波动 / 长期波动：
   - \(Filter < 1\)：短期比长期更平静 → 突破时更可能走出**趋势行情**；
@@ -132,8 +132,6 @@ $$
 
 这样的三层拆分，非常适合交给 gplearn 做非线性组合，让它自动学习类似
 **“if（低波 + 价格加速 + OI 增长 + 主动净买入）then（顺势加仓）”** 的高阶逻辑。
-
-
 
 为了让你的 gplearn 挖掘出更具鲁棒性的策略，建议在你的因子库（Terminals）中补充以下两个维度：
 
@@ -376,8 +374,6 @@ Crypto 小时级数据的噪音非常大。你设计的因子（如 OI 变化、
 
 先不要急着挖掘。把所有提到的因子（**OI**效率、**CVD**背离、**Wick**占比）先写成** Python **代码，画出累积收益曲线（或者和价格叠加画图），肉眼观察一下它们在** 2023 **年震荡市和** 2024 **年趋势市的表现。如果肉眼看着都有逻辑，再喂给** gplearn **组装。
 
-
-
 为了让你的 gplearn 挖掘出更具鲁棒性的策略，建议在你的因子库（Terminals）中补充以下两个维度：
 
 **A. 资金费率斜率 (Funding Rate Slope)**
@@ -498,6 +494,12 @@ $$
 **总结**
 
 识别假突破的核心在于：**“不仅要看价格走到了哪里，更要看它走过去的方式是否健康。”** 一个健康的小时级突破应该是：**持仓平稳增长（不是暴增也不是暴减）+ CVD 稳步上扬 + 波动率温和放大（不是垂直拉升）+ 成交量分布均匀。** 如果你能把这些逻辑封装成原子因子喂给 gplearn，它挖掘出的策略鲁棒性会比单纯用 MACD/RSI 类指标强出几个量级。
+
+
+
+
+
+
 
 这段关于动量策略和假突破识别的论述 **含金量非常高** 。
 

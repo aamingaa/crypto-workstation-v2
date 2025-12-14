@@ -16,8 +16,8 @@ read_frequency: 'monthly'
 # read_frequency: 'monthly'
 
 # ===== 粗粒度特征 + 细粒度滚动配置 =====
-# data_source: coarse_grain kline  # 使用粗粒度特征方法
-data_source: kline
+# data_source: coarse_grain kline factor_visualize # 使用粗粒度特征方法
+data_source: factor_visualize
 
 # 粗粒度特征桶周期（2小时为基本单位）
 coarse_grain_period: '2h'
@@ -31,7 +31,7 @@ rolling_step: '15min'
 # ===== 或者直接指定数据文件路径 =====
 # file_path: '/path/to/your/data.feather'
 
-include_categories: ['momentum'] # ['liq', 'momentum', 'volatility', 'reversal', 'volume_price', 'impact', 'structure', 'moving_average', 'oscillator', 'bands', 'microcycle']
+include_categories: ['liq'] # ['liq', 'momentum', 'volatility', 'reversal', 'volume_price', 'impact', 'structure', 'moving_average', 'oscillator', 'bands', 'microcycle']
 execution_mode: 'once'   # 'once' or 'loop'
 
 # gp_settings:
