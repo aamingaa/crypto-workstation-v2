@@ -808,6 +808,145 @@ class DiagnosticTools:
         )
         return pd.Series(pos_all, index=self.factor_data.index, name=f"{factor_name}_qw")
     
+    def visualize_factor_vs_price(
+        self, 
+        factor_name, 
+        data_range='test', 
+        price_type='close', 
+        save_dir=None,
+        figsize=(14, 8)
+    ):
+        """
+        可视化单因子与价格的时序对比，用于观察因子行为与价格变动的关系。
+        
+        市场假设：
+            某些因子在价格拐点前后会出现特征性信号（如尖峰、突变等）。
+            例如：价格见顶下跌前，清算压力因子（Liq_Zscore）可能出现尖峰。
+        
+        Args:
+            factor_name (str): 因子名称
+            data_range (str): 'train' 或 'test'
+            price_type (str): 'close' 或 'open'，选择要展示的价格类型
+            save_dir (str or Path): 保存目录，None 则显示图形
+            figsize (tuple): 图形尺寸
+        
+        Returns:
+            fig, (ax1, ax2): matplotlib 图形对象
+        """
+        print(f"\n===== 单因子与价格可视化对比：{factor_name} | {data_range} 段 =====")
+        
+        if factor_name not in self.factor_data.columns:
+            print(f"因子 {factor_name} 不在 factor_data 中。")
+            return None
+        
+        train_len = len(self.ret_train)
+        
+        # 获取因子数据和价格数据
+        if data_range == 'train':
+            fac_series = self.factor_data[factor_name].iloc[:train_len]
+            if price_type == 'close':
+                price_data = self.close_train
+            else:
+                price_data = self.open_train
+        elif data_range == 'test':
+            fac_series = self.factor_data[factor_name].iloc[train_len:]
+            if price_type == 'close':
+                price_data = self.close_test
+            else:
+                price_data = self.open_test
+        else:
+            raise ValueError("data_range 必须是 'train' 或 'test'")
+        
+        # 转换为 numpy 数组并对齐长度
+        if isinstance(price_data, pd.Series):
+            price_arr = price_data.values
+            price_index = price_data.index
+        else:
+            price_arr = np.asarray(price_data)
+            price_index = fac_series.index
+        
+        fac_vals = fac_series.values
+        min_len = min(len(fac_vals), len(price_arr))
+        fac_vals = fac_vals[:min_len]
+        price_arr = price_arr[:min_len]
+        
+        if hasattr(price_index, '__len__') and len(price_index) >= min_len:
+            x_axis = price_index[:min_len]
+        else:
+            x_axis = np.arange(min_len)
+        
+        # 清理 NaN 和 Inf
+        mask = np.isfinite(fac_vals) & np.isfinite(price_arr)
+        if mask.sum() < 10:
+            print("有效样本不足，无法绘图。")
+            return None
+        
+        # 创建图形（双 y 轴）
+        fig, ax1 = plt.subplots(figsize=figsize)
+        ax2 = ax1.twinx()
+        
+        # 绘制价格曲线（左轴）
+        color_price = 'tab:blue'
+        ax1.set_xlabel('Time / Bar Index', fontsize=11)
+        ax1.set_ylabel('Price', color=color_price, fontsize=11)
+        line_price = ax1.plot(x_axis, price_arr, color=color_price, linewidth=1.5, 
+                              label=f'{price_type.capitalize()} Price', alpha=0.85)
+        ax1.tick_params(axis='y', labelcolor=color_price)
+        ax1.grid(True, linestyle='--', alpha=0.3)
+        
+        # 绘制因子曲线（右轴）
+        color_factor = 'tab:red'
+        ax2.set_ylabel(f'{factor_name}', color=color_factor, fontsize=11)
+        line_factor = ax2.plot(x_axis, fac_vals, color=color_factor, linewidth=1.2, 
+                               label=factor_name, alpha=0.75)
+        ax2.tick_params(axis='y', labelcolor=color_factor)
+        
+        # 添加水平参考线（因子的均值和 ±1σ）
+        fac_mean_valid = np.nanmean(fac_vals[mask])
+        fac_std_valid = np.nanstd(fac_vals[mask])
+        ax2.axhline(fac_mean_valid, color='gray', linestyle='--', linewidth=0.8, alpha=0.5, label='Factor Mean')
+        ax2.axhline(fac_mean_valid + fac_std_valid, color='orange', linestyle=':', linewidth=0.8, alpha=0.4, label='±1σ')
+        ax2.axhline(fac_mean_valid - fac_std_valid, color='orange', linestyle=':', linewidth=0.8, alpha=0.4)
+        
+        # 设置标题和图例
+        title = f"Factor vs Price: {factor_name} | {data_range} | {price_type}"
+        ax1.set_title(title, fontsize=14, fontweight='bold')
+        
+        # 合并图例
+        lines1, labels1 = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', fontsize=9)
+        
+        # 格式化 x 轴（如果是时间索引）
+        try:
+            if hasattr(x_axis, 'dtype') and 'datetime' in str(x_axis.dtype):
+                from matplotlib.dates import DateFormatter, AutoDateLocator
+                ax1.xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))
+                ax1.xaxis.set_major_locator(AutoDateLocator())
+                fig.autofmt_xdate()
+        except Exception:
+            pass
+        
+        plt.tight_layout()
+        
+        # 保存或显示
+        if save_dir is not None:
+            save_dir = Path(save_dir)
+            save_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"factor_vs_price_{factor_name}_{data_range}.png"
+            # 清理文件名
+            fname = fname.replace("/", "_").replace("\\", "_").replace(" ", "_").replace("(", "").replace(")", "")
+            out_path = save_dir / fname
+            out_path.unlink(missing_ok=True)
+            plt.savefig(out_path, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+            print(f"因子与价格对比图已保存至: {out_path}")
+        else:
+            plt.show()
+        
+        print("===== 单因子与价格可视化对比结束 =====\n")
+        return fig, (ax1, ax2)
+    
     def _simulate_trading(self, pos, data_range):
         """简化的交易模拟（复用 BacktestEngine 逻辑）"""
         if data_range == 'train':
