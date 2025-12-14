@@ -173,6 +173,68 @@ def deal_liquidations_data(df: pd.DataFrame, freq: str="15min"):
     # print(df_15m.head())
     return df_freq
 
+def read_liquidations_data(symbol: str="ETHUSDT", from_date: str="2025-02-01", to_date: str="2025-02-02"):
+   
+    _list_days = list_days(from_date, to_date)
+    df_list = []
+    for day in _list_days:
+        df = pd.read_csv(f"{DOWNLOAD_DIR}/liquidations/binance-futures_liquidations_{day}_{symbol}.csv.gz")
+        df.rename(columns={'timestamp': 'open_time'}, inplace=True)
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='us')
+        df.set_index('open_time', inplace=True)
+        df.drop(columns=['symbol', 'local_timestamp', 'id'], inplace=True)
+        df_list.append(df)
+    result_df = pd.concat(df_list)
+    result_df.sort_index(inplace=True)
+    return result_df
+
+def read_derivative_ticker_data(symbol: str="ETHUSDT", from_date: str="2025-02-01", to_date: str="2025-02-02"):
+   
+    _list_days = list_days(from_date, to_date)
+    df_list = []
+    for day in _list_days:
+        df = pd.read_csv(f"{DOWNLOAD_DIR}/derivative_ticker/binance-futures_derivative_ticker_{day}_{symbol}.csv.gz")
+        df.rename(columns={'timestamp': 'open_time'}, inplace=True)
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='us')
+        df['funding_timestamp'] = pd.to_datetime(df['funding_timestamp'], unit='us')
+        df.set_index('open_time', inplace=True)
+        df.drop(columns=['exchange', 'local_timestamp', 'symbol'], inplace=True)
+        df_list.append(df)
+    result_df = pd.concat(df_list)
+    result_df.sort_index(inplace=True)
+    return result_df
+
+def deal_derivative_ticker_data(df: pd.DataFrame, freq: str="15min"):
+    # 2. 聚合到 15min
+    # 注意：对于状态数据（OI、费率），我们通常关心该时间窗口结束时的状态
+    df_freq = df.resample(freq, label='left', closed='left').agg({
+        'funding_rate': 'mean',        # 费率取平均，反映该时段整体情绪
+        'predicted_funding_rate': 'last',
+        'open_interest': 'last',       # 持仓量取期末值
+        'index_price': 'last',
+        'mark_price': 'last'
+    })
+
+    # 3. 缺失值处理 (Forward Fill)
+    # 资金费率和OI不会凭空消失，如果某15分钟没数据，沿用上一时刻的值
+    df_freq.fillna(method='ffill', inplace=True)
+
+    # 4. 核心特征构造 (Feature Engineering for gplearn)
+    # 这些是真正喂给 gplearn 的因子
+
+    # A. OI 变化率 (OI Momentum)
+    # 逻辑：过去 15分钟有多少新仓位进场？
+    df_freq['oi_pct_change'] = df_freq['open_interest'].pct_change()
+
+    # B. 期限结构/基差 (Basis)
+    # 逻辑：合约比现货贵多少？(反映情绪溢价)
+    # 归一化处理：(标记价格 - 指数价格) / 指数价格
+    df_freq['basis_ratio'] = (df_freq['mark_price'] - df_freq['index_price']) / df_freq['index_price']
+
+    # C. 费率加速度 (Funding Acceleration)
+    # 逻辑：费率是否在快速上升？
+    df_freq['funding_rate_delta'] = df_freq['funding_rate'].diff()
+    return df_freq
 
 if __name__ == "__main__":
     # for ex in CANDIDATE_EXCHANGES:
@@ -184,13 +246,19 @@ if __name__ == "__main__":
     # ---- 你确认好某个 exchange 的 dataTypes 名称后，把下面替换成真实名字即可 ----
     # 例如你找到的可能是 ["open_interest", "liquidations", ...derivative_ticker]（以实际输出为准）
     # download("binance-futures", "ETHUSDT", ["derivative_ticker"], "2022-01-01", "2025-11-01")
-    df = read_liquidations_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
-    # print(df.tail())
-
-    df_freq = deal_liquidations_data(df, freq="15min")
+    # df = read_liquidations_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
+    # df_freq = deal_liquidations_data(df, freq="15min")
+    
+    
+    df = read_derivative_ticker_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
+    # print(df.columns)
+    print(df.head())
+    df_freq = deal_derivative_ticker_data(df, freq="15min")
     print(df_freq.head())
 
-    # print(df.columns())
+
+    # print(df_freq.head())
+
 
     # https://docs.tardis.dev/historical-data-details/binance-futures topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
