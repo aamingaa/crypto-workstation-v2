@@ -145,6 +145,7 @@ def define_base_fields(rolling_zscore_window: int = 2000, include_categories: Li
         return body, upper, lower
     
     features = {
+        'liq_zscore': lambda data: calc_liquidation_pressure(data, lookback=24),
         'lgp_shortcut_illiq_6': lambda data: norm(np.nan_to_num(pd.Series(2*(data['h'] - data['l']) - np.abs(data['c'] - data['o'])).rolling(6, min_periods=1).apply(lambda x: x.mean()))),
         'h_ts_std_10': lambda data: norm(np.nan_to_num(pd.Series(data['h']).rolling(window=10, min_periods=5).std())),
         'v_ta_cmo_25': lambda data: norm(talib.CMO(data['vol'], 25)),
@@ -502,6 +503,21 @@ def define_base_fields(rolling_zscore_window: int = 2000, include_categories: Li
     #     'cci_14': lambda data: norm(talib.CCI(data['c'], data['l'], data['h'], 14)),
     # }
 
+def calc_liquidation_pressure(df, lookback=24):
+    """
+    计算清算压力因子：空头爆仓量 / 成交量
+    """
+    # 1. 基础清算占比 (空头爆仓)
+    # 加上 1e-8 防止除以零
+    short_liq_ratio = df['liquidation_short'] / (df['volume'] + 1e-8)
+    
+    # 2. 标准化 (Z-Score)
+    # 因为爆仓量通常是长尾分布，取对数或者 rolling z-score 更好
+    liq_log = np.log1p(short_liq_ratio)
+    liq_zscore = (liq_log - liq_log.rolling(lookback).mean()) / (liq_log.rolling(lookback).std() + 1e-8)
+    
+    return liq_zscore
+
 
 def get_feature_catalog() -> dict:
     """
@@ -519,6 +535,9 @@ def get_feature_catalog() -> dict:
     - microcycle: fm20/fm30/fm40/fm60 等周期滤波
     """
     catalog = {
+        'liq': [
+            'liq_zscore'
+        ],
         'momentum': [
             'ori_ta_macd', 'close_macd', 'c_ta_tsf_5', 'h_ta_lr_angle_10', 'o_ta_lr_slope_10',
             'v_trix_8_obv', 'ori_trix_8', 'ori_trix_21', 'ori_trix_55', 'obv_lr_slope_20',
