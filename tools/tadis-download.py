@@ -29,7 +29,7 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
             # Channel(name="derivative_ticker", symbols=["BTCUSDT"]),
             
             # 获取多空数据 (这是 Tardis 的特殊合成频道)
-            Channel(name="topLongShortAccountRatio", symbols=symbols),
+            Channel(name=channel_name, symbols=symbols),
             # Channel(name="topLongShortPositionRatio", symbols=["BTCUSDT"]),
         ]
     )
@@ -57,6 +57,7 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         if df_m.empty:
             continue
         month_str = month_start.strftime("%Y-%m")
+        print(f"month_str {month_str}, channel_name {channel_name}")
         out_path = os.path.join(out_dir, f"{channel_name}_{month_str}.csv")
         df_m.to_csv(out_path)
 
@@ -245,16 +246,18 @@ if __name__ == "__main__":
 
     # ---- 你确认好某个 exchange 的 dataTypes 名称后，把下面替换成真实名字即可 ----
     # 例如你找到的可能是 ["open_interest", "liquidations", ...derivative_ticker]（以实际输出为准）
+    
     # download("binance-futures", "ETHUSDT", ["derivative_ticker"], "2022-01-01", "2025-11-01")
+   
     # df = read_liquidations_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
     # df_freq = deal_liquidations_data(df, freq="15min")
     
     
-    df = read_derivative_ticker_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
+    # df = read_derivative_ticker_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
     # print(df.columns)
-    print(df.head())
-    df_freq = deal_derivative_ticker_data(df, freq="15min")
-    print(df_freq.head())
+    # print(df.head())
+    # df_freq = deal_derivative_ticker_data(df, freq="15min")
+    # print(df_freq.head())
 
 
     # print(df_freq.head())
@@ -262,4 +265,4 @@ if __name__ == "__main__":
 
     # https://docs.tardis.dev/historical-data-details/binance-futures topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
-    # asyncio.run(replay_data(exchange="binance-futures", from_date="2025-01-01", to_date="2025-01-05", channel_name="takerlongshortRatio", symbols=["ethusdt"]))
+    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-01-01", to_date="2025-06-01", channel_name="openInterest", symbols=["ethusdt"]))

@@ -623,20 +623,43 @@ def _expanding_zscore(x, ddof=1):
 
 
 # ----------k_v1 version-----------------
+# def norm1(x, rolling_zscore_window):
+#     window = rolling_zscore_window
+
+#     arr = np.asarray(x)
+#     x = np.sign(arr) * np.log1p(np.abs(arr)) / np.log1p(np.abs(np.mean(arr)))
+
+#     factors_data = pd.DataFrame(x, columns=['factor'])
+#     factors_data = factors_data.replace([np.inf, -np.inf, np.nan], 0.0)
+#     # factors_mean = factors_data.rolling(window=window, min_periods=1).mean()
+#     factors_std = factors_data.rolling(window=window, min_periods=1).std()
+#     # factor_value = (factors_data - factors_mean) / factors_std
+#     factor_value = (factors_data ) / factors_std
+#     factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
+#     # factor_value = factor_value.clip(-6, 6)
+#     return np.nan_to_num(factor_value).flatten()
+
 def norm1(x, rolling_zscore_window):
     window = rolling_zscore_window
-
     arr = np.asarray(x)
-    x = np.sign(arr) * np.log1p(np.abs(arr)) / np.log1p(np.abs(np.mean(arr)))
-
-    factors_data = pd.DataFrame(x, columns=['factor'])
+    
+    # 1. Log 变换：只做非线性压缩，不涉及全局统计量
+    # 处理长尾分布，保留符号
+    x_log = np.sign(arr) * np.log1p(np.abs(arr))
+    
+    factors_data = pd.DataFrame(x_log, columns=['factor'])
     factors_data = factors_data.replace([np.inf, -np.inf, np.nan], 0.0)
-    # factors_mean = factors_data.rolling(window=window, min_periods=1).mean()
-    factors_std = factors_data.rolling(window=window, min_periods=1).std()
-    # factor_value = (factors_data - factors_mean) / factors_std
-    factor_value = (factors_data ) / factors_std
-    factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
-    # factor_value = factor_value.clip(-6, 6)
+    
+    # 2. Rolling Z-Score (必须去均值)
+    factors_mean = factors_data.rolling(window=window, min_periods=window//10).mean()
+    factors_std = factors_data.rolling(window=window, min_periods=window//10).std()
+    
+    # 加入 epsilon 防止除零
+    factor_value = (factors_data - factors_mean) / (factors_std + 1e-8)
+    
+    # 3. 异常值截断 (Winsorization)
+    factor_value = factor_value.clip(-5, 5)
+    
     return np.nan_to_num(factor_value).flatten()
 
 def calculate_features_df(input_df, rolling_zscore_window):
