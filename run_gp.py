@@ -19,22 +19,22 @@ def main() -> None:
     yaml_file_path = project_root / "gp_crypto_next" / "coarse_grain_parameters.yaml"
 
     analyzer = GPAnalyzer(str(yaml_file_path))
-    # analyzer.run()
+    analyzer.run()
 
     # # Option2 - 直接评估现有因子库中的所有因子， 执行metric打分 （可以执行另外的一组metric，重新定义另一个metric_dict即可）。不需要运行gplearn.
     # analyzer.evaluate_existing_factors()
 
     # Option3 - 寻找出优秀的因子，并绘制出滚动夏普和pnl曲线,再加工模型模型
     # analyzer.read_and_cal_metrics()
-    exp_pool = analyzer.elite_factors_further_process()
-    pos_test, pos_train = analyzer.go_model(exp_pool)
+    # exp_pool = analyzer.elite_factors_further_process()
+    # pos_test, pos_train = analyzer.go_model(exp_pool)
     
-    # 使用 GPAnalyzer 自带的真实交易模拟与绘图（原始接口）
-    fees_rate = 0.0005
-    analyzer.real_trading_simulation_plot(pos_test, pos_train, fees_rate=fees_rate)
+    # # 使用 GPAnalyzer 自带的真实交易模拟与绘图（原始接口）
+    # fees_rate = 0.0005
+    # analyzer.real_trading_simulation_plot(pos_test, pos_train, fees_rate=fees_rate)
 
-    diag_results = analyzer.run_factor_pool_diagnostics(exp_pool, fees_rate=fees_rate)
-    print(diag_results)
+    # diag_results = analyzer.run_factor_pool_diagnostics(exp_pool, fees_rate=fees_rate)
+    # print(diag_results)
 
     # factor_name_demo = 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
     

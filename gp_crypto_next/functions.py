@@ -291,38 +291,38 @@ def percentileofscore(a, score):
 def _sigmoid(x1):
     """Special case of logistic function to transform to probabilities."""
     with np.errstate(over='ignore', under='ignore'):
-        return norm_log1p(np.nan_to_num(1 / (1 + np.exp(-x1))))
+        return norm(np.nan_to_num(1 / (1 + np.exp(-x1))))
 
 def _tanh(x1):
     with np.errstate(over='ignore', under='ignore'):
-        return norm_log1p(np.nan_to_num(np.tanh(x1)))
+        return norm(np.nan_to_num(np.tanh(x1)))
 
 def _elu(x1):
     with np.errstate(over='ignore', under='ignore'):
         x = np.nan_to_num(np.where(x1 > 0, x1, 1 * (np.exp(x1) - 1)))
-        return norm_log1p(x)
+        return norm(x)
 
 def _ta_ht_trendline(x1):
     x1 = x1.flatten()
     x = np.nan_to_num(talib.HT_TRENDLINE(x1))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_ht_dcperiod(x1):
     x1 = x1.flatten()
     x = np.nan_to_num(talib.HT_DCPERIOD(x1))
-    return norm_log1p(x)
+    return norm(x)
 
 
 def _ta_ht_dcphase(x1):
     x1 = x1.flatten()
     x = np.nan_to_num(talib.HT_DCPHASE(x1))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_sar(x1, x2):
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.SAR(x1, x2))
-    return norm_log1p(x)
+    return norm(x)
 
 
 def _ta_bop(x1, x2, x3, x4):
@@ -331,7 +331,7 @@ def _ta_bop(x1, x2, x3, x4):
     x3 = x3.flatten()
     x4 = x4.flatten()
     x = np.nan_to_num(talib.BOP(x1, x2, x3, x4))
-    return norm_log1p(x)
+    return norm(x)
 
 
 def _ta_ad(x1, x2, x3, x4):
@@ -340,7 +340,7 @@ def _ta_ad(x1, x2, x3, x4):
     x3 = x3.flatten()
     x4 = x4.flatten()
     x = np.nan_to_num(talib.AD(x1, x2, x3, x4))
-    return norm_log1p(x)
+    return norm(x)
 
 # ma(df.close, 8)
 
@@ -348,7 +348,7 @@ def _ta_obv(x1, x2):
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.OBV(x1, x2))
-    return norm_log1p(x)
+    return norm(x)
 
 
 def _ta_trange(x1, x2, x3):
@@ -356,7 +356,7 @@ def _ta_trange(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.TRANGE(x1, x2, x3))
-    return norm_log1p(x)
+    return norm(x)
 
 # 截至20230522只有这些因子，需要把带有t的引进
 
@@ -365,46 +365,46 @@ def _ts_cov_20(x1, x2):
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).cov(pd.Series(x2)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_cov_40(x1, x2):
     t = 40
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).cov(pd.Series(x2)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_corr_20(x1, x2):
     t = 20
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).corr(pd.Series(x2)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_corr_40(x1, x2):
     t = 40
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).corr(pd.Series(x2)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_day_min_10(x1):  # the i_th element is the interval between the min_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 10
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(min(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_day_min_20(x1):  # the i_th element is the interval between the min_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 20
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(min(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_day_min_40(x1):  # the i_th element is the interval between the min_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 40
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(min(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 
 def _ts_day_min_10(x1): #   
     t = 10
@@ -412,7 +412,7 @@ def _ts_day_min_10(x1): #
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmin(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_day_min_20(x1): #   
     t = 20
@@ -420,7 +420,7 @@ def _ts_day_min_20(x1): #
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmin(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_day_min_40(x1): #   
     t = 40
@@ -428,32 +428,32 @@ def _ts_day_min_40(x1): #
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmin(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_day_max_10(x1):  # the i_th element is the interval between the max_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 10
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(max(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_day_max_20(x1):  # the i_th element is the interval between the max_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 20
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(max(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_day_max_40(x1):  # the i_th element is the interval between the max_value time point and t_i in the n-period time series from the past (t_i is not included)
 #     t = 40
 #     x1 = pd.Series(x1.flatten())
 #     x = (np.nan_to_num(x1.rolling(window=t+1).apply(lambda x: t - x.values.tolist()[: -1].index(max(x.values.tolist()[: -1])))))
-#     return norm_log1p(x)
+#     return norm(x)
 def _ts_day_max_10(x1):  # #   
     t = 10
     x1 = pd.Series(x1.flatten())
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmax(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_day_max_20(x1):  # #   
     t = 20
@@ -461,7 +461,7 @@ def _ts_day_max_20(x1):  # #
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmax(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_day_max_40(x1):  # #   
     t = 40
@@ -469,7 +469,7 @@ def _ts_day_max_40(x1):  # #
     x = sliding_window_view(x1, window_shape=t) #  
     x = (t - x.argmax(axis=1))[:-1]
     x = np.nan_to_num(np.concatenate((np.array([0] * t), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 
 
@@ -477,19 +477,19 @@ def _ts_sma_8(x1):  # the i_th element is the simple moving average of the eleme
     t = 8
     x1 = x1.flatten()
     x = (np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).mean()))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_sma_21(x1):  # the i_th element is the simple moving average of the elements in the n-period time series from the past
     t = 21
     x1 = x1.flatten()
     x = (np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).mean()))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_sma_55(x1):  # the i_th element is the simple moving average of the elements in the n-period time series from the past
     t = 55
     x1 = x1.flatten()
     x = (np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).mean()))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_wma_8(x1):  # the i_th element is the weighted moving average of the elements in the n-period time series from the past
 #     t = 8
@@ -497,7 +497,7 @@ def _ts_sma_55(x1):  # the i_th element is the simple moving average of the elem
 #     weight_list = np.arange(1, t + 1)
 #     weight_list = weight_list / np.sum(weight_list)
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t).apply(lambda price_list: np.dot(price_list, weight_list), raw=True))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_wma_21(x1):  # the i_th element is the weighted moving average of the elements in the n-period time series from the past
 #     t = 21
@@ -505,7 +505,7 @@ def _ts_sma_55(x1):  # the i_th element is the simple moving average of the elem
 #     weight_list = np.arange(1, t + 1)
 #     weight_list = weight_list / np.sum(weight_list)
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t).apply(lambda price_list: np.dot(price_list, weight_list), raw=True))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_wma_55(x1):  # the i_th element is the weighted moving average of the elements in the n-period time series from the past
 #     t = 55
@@ -513,7 +513,7 @@ def _ts_sma_55(x1):  # the i_th element is the simple moving average of the elem
 #     weight_list = np.arange(1, t + 1)
 #     weight_list = weight_list / np.sum(weight_list)
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t).apply(lambda price_list: np.dot(price_list, weight_list), raw=True))
-#     return norm_log1p(x)
+#     return norm(x)
 
 def _ts_wma_8(x1):  #  
     t = 8
@@ -523,7 +523,7 @@ def _ts_wma_8(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.dot(x, weight_list)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_wma_21(x1):  #  
     t = 21
@@ -533,7 +533,7 @@ def _ts_wma_21(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.dot(x, weight_list)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_wma_55(x1):  #  
     t = 55
@@ -543,69 +543,69 @@ def _ts_wma_55(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.dot(x, weight_list)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 
 def _ts_lag_3(x1):
     t = 3
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).shift(periods=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_lag_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).shift(periods=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_lag_17(x1):
     t = 17
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).shift(periods=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_delta_3(x1):
     t = 3
     x1 = x1.flatten()
     x = np.nan_to_num(x1 - np.nan_to_num(pd.Series(x1).shift(periods=t)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_delta_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(x1 - np.nan_to_num(pd.Series(x1).shift(periods=t)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_delta_17(x1):
     t = 17
     x1 = x1.flatten()
     x = np.nan_to_num(x1 - np.nan_to_num(pd.Series(x1).shift(periods=t)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_sum_3(x1):  # the i_th element is the sum of the elements in the n-period time series from the past
 #     t = 3
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.sum))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_sum_8(x1):  # the i_th element is the sum of the elements in the n-period time series from the past
 #     t = 8
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.sum))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_sum_17(x1):  # the i_th element is the sum of the elements in the n-period time series from the past
 #     t = 17
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.sum))
-#     return norm_log1p(x)
+#     return norm(x)
 def _ts_sum_3(x1):  #  
     t = 3
     x1 = x1.flatten()
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.sum(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_sum_8(x1):  #  
     t = 8
@@ -613,7 +613,7 @@ def _ts_sum_8(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.sum(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_sum_17(x1):  #  
     t = 17
@@ -621,25 +621,25 @@ def _ts_sum_17(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.sum(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_prod_3(x1):  # the i_th element is the production of the elements in the n-period time series from the past
 #     t = 3
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.prod))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_prod_8(x1):  # the i_th element is the production of the elements in the n-period time series from the past
 #     t = 8
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.prod))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_prod_17(x1):  # the i_th element is the production of the elements in the n-period time series from the past
 #     t = 17
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.prod))
-#     return norm_log1p(x)
+#     return norm(x)
 
 def _ts_prod_3(x1):  #  
     t = 3
@@ -647,7 +647,7 @@ def _ts_prod_3(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.prod(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0]*(t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_prod_8(x1):  #  
     t = 8
@@ -655,7 +655,7 @@ def _ts_prod_8(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.prod(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0]*(t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_prod_17(x1):  #  
     t = 17
@@ -663,234 +663,234 @@ def _ts_prod_17(x1):  #
     x = sliding_window_view(pd.Series(x1), window_shape=t)
     x = np.prod(x, axis=1)
     x = np.nan_to_num(np.concatenate(([0]*(t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_std_10(x1):  # the i_th element is the standard deviation of the elements in the n-period time series from the past
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).std())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_std_20(x1):  # the i_th element is the standard deviation of the elements in the n-period time series from the past
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).std())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_std_40(x1):  # the i_th element is the standard deviation of the elements in the n-period time series from the past
     t = 40
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).std())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_skew_10(x1):  # the i_th element is the skewness of the elements in the n-period time series from the past
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).skew())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_skew_20(x1):  # the i_th element is the skewness of the elements in the n-period time series from the past
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).skew())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_skew_40(x1):  # the i_th element is the skewness of the elements in the n-period time series from the past
     t = 40
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).skew())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_kurt_10(x1):  # the i_th element is the kurtosis of the elements in the n-period time series from the past
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).kurt())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_kurt_20(x1):  # the i_th element is the kurtosis of the elements in the n-period time series from the past
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).kurt())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_kurt_40(x1):  # the i_th element is the kurtosis of the elements in the n-period time series from the past
     t = 40
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).kurt())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_min_5(x1):  # the i_th element is the minimum value in the n-period time series from the past
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_min_10(x1):  # the i_th element is the minimum value in the n-period time series from the past
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_min_20(x1):  # the i_th element is the minimum value in the n-period time series from the past
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_max_5(x1):  # the i_th element is the maximum value in the n-period time series from the past
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_max_10(x1):  # the i_th element is the maximum value in the n-period time series from the past
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_max_20(x1):  # the i_th element is the maximum value in the n-period time series from the past
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_range_5(x1):
     t = 5
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max()) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_range_10(x1):
     t = 10
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max()) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_range_20(x1):
     t = 20
     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).max()) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).min())
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_argmin_5(x1):  # the i_th element is the location of the minimum value in the n-period time series from the past
 #     t = 5
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argmin_10(x1):  # the i_th element is the location of the minimum value in the n-period time series from the past
 #     t = 10
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argmin_20(x1):  # the i_th element is the location of the minimum value in the n-period time series from the past
 #     t = 20
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 def _ts_argmin_5(x1): #  
     t = 5
     x = np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argmin_10(x1): #  
     t = 10
     x = np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argmin_20(x1): #  
     t = 20
     x = np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 
 # def _ts_argmax_5(x1):  # the i_th element is the location of the maximum value in the n-period time series from the past
 #     t = 5
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argmax_10(x1):  # the i_th element is the location of the maximum value in the n-period time series from the past
 #     t = 10
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argmax_20(x1):  # the i_th element is the location of the maximum value in the n-period time series from the past
 #     t = 20
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 def _ts_argmax_5(x1):  #  
     t = 5
     x = np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argmax_10(x1): #  
     t = 10
     x = np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argmax_20(x1): #  
     t = 20
     x = np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1 #  
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_argrange_5(x1):
 #     t = 5
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argrange_10(x1):
 #     t = 10
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_argrange_20(x1):
 #     t = 20
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmax) + 1) - np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(np.argmin) + 1)
-#     return norm_log1p(x)
+#     return norm(x)
 
 def _ts_argrange_5(x1): #  
     t = 5
     x = np.nan_to_num(np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1) - np.nan_to_num(np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1)
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argrange_10(x1): #  
     t = 10
     x = np.nan_to_num(np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1) - np.nan_to_num(np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1)
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_argrange_20(x1): #  
     t = 20
     x = np.nan_to_num(np.argmax(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1) - np.nan_to_num(np.argmin(sliding_window_view(x1.flatten(), window_shape=t), axis=1) + 1)
     x = np.nan_to_num(np.concatenate((np.array([0] * (t - 1)), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_rank_5(x1):  # the i_th element is the quantile of the last element in the n-period time series from the past
 #     t = 5
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.rank(pct=True).values[-1]))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_rank_10(x1):  # the i_th element is the quantile of the last element in the n-period time series from the past
 #     t = 10
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.rank(pct=True).values[-1]))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_rank_20(x1):  # the i_th element is the quantile of the last element in the n-period time series from the past
 #     t = 20
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.rank(pct=True).values[-1]))
-#     return norm_log1p(x)
+#     return norm(x)
 
 def _ts_rank_5(x1):  #  
     t = 5
@@ -898,7 +898,7 @@ def _ts_rank_5(x1):  #
     arr=sliding_window_view(x1, t)
     x = percentileofscore(arr, arr[:, -1]) * 100
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_rank_10(x1):  #  
     t = 10
@@ -906,7 +906,7 @@ def _ts_rank_10(x1):  #
     arr=sliding_window_view(x1, t)
     x = percentileofscore(arr, arr[:, -1]) * 100
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_rank_20(x1):  #  
     t = 20
@@ -914,25 +914,25 @@ def _ts_rank_20(x1):  #
     arr=sliding_window_view(x1, t)
     x = percentileofscore(arr, arr[:, -1]) * 100
     x = np.nan_to_num(np.concatenate(([0] * (t - 1), x)))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ts_mean_return_5(x1):
 #     t = 5
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.pct_change(1).mean()))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_mean_return_10(x1):
 #     t = 10
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.pct_change(1).mean()))
-#     return norm_log1p(x)
+#     return norm(x)
 
 # def _ts_mean_return_20(x1):
 #     t = 20
 #     x1 = x1.flatten()
 #     x = np.nan_to_num(pd.Series(x1).rolling(window=t, min_periods=int(t / 2)).apply(lambda x: x.pct_change(1).mean()))
-#     return norm_log1p(x)
+#     return norm(x)
 def _ts_mean_return_5(x1): #  
     t = 5
     x1, x2 = pd.Series(x1), pd.Series(x1).shift(1).replace([np.nan], 0.0)
@@ -943,7 +943,7 @@ def _ts_mean_return_5(x1): #
     x = x[:, 1:] # 这一步非常关键，pandas的rolling后求pct_change，20个数据的话只有19个，所以这里需要进行截取，drop掉第一个数据
     x = np.mean(x - np.ones_like(x), axis=1) # 比值减去和x一样的全1矩阵
     x = np.nan_to_num(np.concatenate((np.array([0] * (t-1)), x))) # 这种处理方式缺失t-1个数据，concatenate补全处理，并进行标准化处理
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_mean_return_10(x1): #  
     t = 10
@@ -955,7 +955,7 @@ def _ts_mean_return_10(x1): #
     x = x[:, 1:] # 这一步非常关键，pandas的rolling后求pct_change，20个数据的话只有19个，所以这里需要进行截取，drop掉第一个数据
     x = np.mean(x - np.ones_like(x), axis=1) # 比值减去和x一样的全1矩阵
     x = np.nan_to_num(np.concatenate((np.array([0] * (t-1)), x))) # 这种处理方式缺失t-1个数据，concatenate补全处理，并进行标准化处理
-    return norm_log1p(x)
+    return norm(x)
 
 def _ts_mean_return_20(x1): #  
     t = 20
@@ -967,232 +967,232 @@ def _ts_mean_return_20(x1): #
     x = x[:, 1:] # 这一步非常关键，pandas的rolling后求pct_change，20个数据的话只有19个，所以这里需要进行截取，drop掉第一个数据
     x = np.mean(x - np.ones_like(x), axis=1) # 比值减去和x一样的全1矩阵
     x = np.nan_to_num(np.concatenate((np.array([0] * (t-1)), x))) # 这种处理方式缺失t-1个数据，concatenate补全处理，并进行标准化处理
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_beta_5(x1, x2):
     t = 5
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.BETA(x1, x2, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_beta_10(x1, x2):
     t = 10
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.BETA(x1, x2, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_beta_20(x1, x2):
     t = 20
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.BETA(x1, x2, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_slope_5(x1):
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_SLOPE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_slope_10(x1):
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_SLOPE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_slope_20(x1):
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_SLOPE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_intercept_5(x1):
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_INTERCEPT(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_intercept_10(x1):
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_INTERCEPT(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_intercept_20(x1):
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_INTERCEPT(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_angle_5(x1):
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_ANGLE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_angle_10(x1):
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_ANGLE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_lr_angle_20(x1):
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(talib.LINEARREG_ANGLE(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tsf_5(x1):
     t = 5
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TSF(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tsf_10(x1):
     t = 10
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TSF(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tsf_20(x1):
     t = 20
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TSF(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_ema_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.EMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_ema_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.EMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_ema_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.EMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_dema_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.DEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_dema_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.DEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_dema_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.DEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_kama_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.KAMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_kama_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.KAMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_kama_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.KAMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tema_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tema_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_tema_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TEMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trima_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trima_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trima_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIMA(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rsi_6(x1):
     t = 6
     x1 = x1.flatten()
     x = np.nan_to_num(talib.RSI(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rsi_12(x1):
     t = 12
     x1 = x1.flatten()
     x = np.nan_to_num(talib.RSI(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rsi_24(x1):
     t = 24
     x1 = x1.flatten()
     x = np.nan_to_num(talib.RSI(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_cmo_14(x1):
     t = 14
     x1 = x1.flatten()
     x = np.nan_to_num(talib.CMO(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_cmo_25(x1):
     t = 25
     x1 = x1.flatten()
     x = np.nan_to_num(talib.CMO(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_mom_12(x1):
     t = 12
     x1 = x1.flatten()
     x = np.nan_to_num(talib.MOM(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_mom_25(x1):
     t = 25
     x1 = x1.flatten()
     x = np.nan_to_num(talib.MOM(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 # def _ta_roc_14(x1):
 #     t = 14
@@ -1208,43 +1208,43 @@ def _ta_rocp_14(x1):
     t = 14
     x1 = x1.flatten()
     x = np.nan_to_num(talib.ROCP(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rocp_25(x1):
     t = 25
     x1 = x1.flatten()
     x = np.nan_to_num(talib.ROCP(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rocr_14(x1):
     t = 14
     x1 = x1.flatten()
     x = np.nan_to_num(talib.ROCR(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_rocr_25(x1):
     t = 25
     x1 = x1.flatten()
     x = np.nan_to_num(talib.ROCR(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trix_8(x1):
     t = 8
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIX(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trix_21(x1):
     t = 21
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIX(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_trix_55(x1):
     t = 55
     x1 = x1.flatten()
     x = np.nan_to_num(talib.TRIX(x1, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_adx_14(x1, x2, x3):
     t = 14
@@ -1252,7 +1252,7 @@ def _ta_adx_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ADX(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_adx_25(x1, x2, x3):
     t = 25
@@ -1260,7 +1260,7 @@ def _ta_adx_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ADX(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_adxr_14(x1, x2, x3):
     t = 14
@@ -1268,7 +1268,7 @@ def _ta_adxr_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ADXR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_adxr_25(x1, x2, x3):
     t = 25
@@ -1276,21 +1276,21 @@ def _ta_adxr_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ADXR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_aroonosc_14(x1, x2):
     t = 14
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.AROONOSC(x1, x2, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_aroonosc_25(x1, x2):
     t = 25
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = np.nan_to_num(talib.AROONOSC(x1, x2, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_cci_14(x1, x2, x3):
     t = 14
@@ -1298,7 +1298,7 @@ def _ta_cci_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.CCI(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_cci_25(x1, x2, x3):
     t = 25
@@ -1306,7 +1306,7 @@ def _ta_cci_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.CCI(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_dx_14(x1, x2, x3):
     t = 14
@@ -1314,7 +1314,7 @@ def _ta_dx_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.DX(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_dx_25(x1, x2, x3):
     t = 25
@@ -1322,7 +1322,7 @@ def _ta_dx_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.DX(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_mfi_14(x1, x2, x3, x4):
     t = 14
@@ -1331,7 +1331,7 @@ def _ta_mfi_14(x1, x2, x3, x4):
     x3 = x3.flatten()
     x4 = x4.flatten()
     x = np.nan_to_num(talib.MFI(x1, x2, x3, x4, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_mfi_25(x1, x2, x3, x4):
     t = 25
@@ -1340,7 +1340,7 @@ def _ta_mfi_25(x1, x2, x3, x4):
     x3 = x3.flatten()
     x4 = x4.flatten()
     x = np.nan_to_num(talib.MFI(x1, x2, x3, x4, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_minus_di_14(x1, x2, x3):
     t = 14
@@ -1348,7 +1348,7 @@ def _ta_minus_di_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.MINUS_DI(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_minus_di_25(x1, x2, x3):
     t = 25
@@ -1356,21 +1356,21 @@ def _ta_minus_di_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.MINUS_DI(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_minus_dm_14(x1, x2):
     t = 14
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = (np.nan_to_num(talib.MINUS_DM(x1, x2, timeperiod=t)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_minus_dm_25(x1, x2):
     t = 25
     x1 = x1.flatten()
     x2 = x2.flatten()
     x = (np.nan_to_num(talib.MINUS_DM(x1, x2, timeperiod=t)))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_willr_14(x1, x2, x3):
     t = 14
@@ -1378,7 +1378,7 @@ def _ta_willr_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.WILLR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_willr_25(x1, x2, x3):
     t = 25
@@ -1386,7 +1386,7 @@ def _ta_willr_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.WILLR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_atr_14(x1, x2, x3):
     t = 14
@@ -1394,7 +1394,7 @@ def _ta_atr_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ATR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_atr_25(x1, x2, x3):
     t = 25
@@ -1402,7 +1402,7 @@ def _ta_atr_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.ATR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_natr_14(x1, x2, x3):
     t = 14
@@ -1410,7 +1410,7 @@ def _ta_natr_14(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.NATR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 def _ta_natr_25(x1, x2, x3):
     t = 25
@@ -1418,7 +1418,7 @@ def _ta_natr_25(x1, x2, x3):
     x2 = x2.flatten()
     x3 = x3.flatten()
     x = np.nan_to_num(talib.NATR(x1, x2, x3, timeperiod=t))
-    return norm_log1p(x)
+    return norm(x)
 
 # 已加入因子：_ts_cov_20，_ts_cov_40, _ts_corr_20, _ts_corr_40, _ts_day_min_10, _ts_day_min_20, _ts_day_min_40
 # _ts_day_max_10, _ts_day_max_20, _ts_day_max_40, _ts_sma_8, _ts_sma_21, _ts_sma_55
@@ -1826,10 +1826,10 @@ _ta_ht_dcperiod(x1) 和 _ta_ht_dcphase(x1)
 _ts_cov_20(x1, x2), _ts_cov_40(x1, x2), _ts_corr_20(x1, x2), _ts_corr_40(x1, x2)
 
 虽然这些函数使用了滚动窗口，但它们的实现方式可能导致累积效应。
-特别是当与 norm_log1p() 函数结合使用时，整个序列的统计特性可能会影响结果。
+特别是当与 norm() 函数结合使用时，整个序列的统计特性可能会影响结果。
 
 
-norm_log1p(x) 函数
+norm(x) 函数
 
 虽然这不是一个单独的指标，但它被应用于几乎所有其他函数的输出。
 它使用了一个大的滚动窗口（250*16天），这实际上会导致长期的累积效应。
@@ -1853,7 +1853,7 @@ percentileofscore(a, score) 函数
 
 对于真正需要累积计算的指标（如OBV和AD），可以考虑使用固定长度的历史数据，而不是全部历史。
 对于全局型的计算（如希尔伯特变换），可以考虑分段计算或使用近似算法。
-重新设计 norm_log1p() 函数，使用固定的标准化参数，或者只考虑固定长度的历史数据。
+重新设计 norm() 函数，使用固定的标准化参数，或者只考虑固定长度的历史数据。
 对于排名类的计算，可以考虑使用近似算法或固定的参考分布。
 
 这些修改可能会牺牲一些精度，但可以显著提高部分数据和全量数据计算结果的一致性。

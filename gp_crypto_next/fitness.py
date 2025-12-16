@@ -207,6 +207,8 @@ def _calculate_average_pic(y, y_pred, w, n_chunk = 5):
     # 计算平均IC
     average_ic = np.mean(ics)
 
+    if np.isnan(average_ic) or np.isinf(average_ic):
+        return -np.inf
     return average_ic
 
 def _calculate_average_sic(y, y_pred, w, n_chunk = 5):
@@ -225,6 +227,9 @@ def _calculate_average_sic(y, y_pred, w, n_chunk = 5):
     # 计算平均IC
     average_ic = np.mean(ics)
 
+    if np.isnan(average_ic) or np.isinf(average_ic):
+        return -np.inf
+    
     return average_ic
 
 def _calculate_max_ic_chunk(y, y_pred, w, n_chunk = 5):
@@ -361,6 +366,9 @@ def _calculate_given_range_ic(y, y_pred, w, up_r, dn_r, method='spearman'):
     else:
         corr = np.nan
    
+    if np.isnan(corr) or np.isinf(corr):
+        return -np.inf
+    
     return corr
 
 
