@@ -1231,7 +1231,8 @@ def data_prepare_coarse_grain_rolling_offset(
         n_jobs: int = -1,  # 并行进程数，-1表示使用所有CPU核心
         use_fine_grain_precompute: bool = True,  # 是否使用细粒度预计算优化
         include_categories: List[str] = None,
-        remove_warmup_rows: bool = True  # 是否删除rolling窗口未满的前rolling_w-1行
+        remove_warmup_rows: bool = True,  # 是否删除rolling窗口未满的前rolling_w-1行
+        predict_label: str = 'norm'  # 预测标签类型
     ):
     """
     粗粒度特征 + 细粒度滚动的数据准备方法（使用offset参数版本）
@@ -1297,18 +1298,20 @@ def data_prepare_coarse_grain_rolling_offset(
     
     # 1. 定义预测窗口长度 (例如 2小时 = 8个15min)
     horizon_bars = int(y_train_ret_period) # 假设为 8
-    
-    # 2. 计算前瞻平滑价格 (Forward TWAP)
-    # 使用 FixedForwardWindowIndexer 极其高效，计算未来 8 个 bar 的均价
-    # 逻辑：t 时刻的值 = Mean(Price[t+1] ... Price[t+8])
-    # 注意：shift(-1) 是因为 rolling 默认包含自身，我们需要的是未来的
-    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=horizon_bars)
-    z_raw['fwd_mean_c'] = z_raw['c'].shift(-1).rolling(window=indexer).mean()
-    
-    # 3. 计算当前波动率 (Volatility) 用于标准化
-    # 例如使用过去 24 小时的波动率 (24h * 4 = 96 bars)
-    # 加上 1e-8 防止除以零
-    z_raw['curr_vol'] = z_raw['c'].pct_change().rolling(window=96).std() + 1e-8
+
+
+    if predict_label == 'future_price': 
+        # 计算前瞻平滑价格 (Forward TWAP)
+        # 使用 FixedForwardWindowIndexer 极其高效，计算未来 8 个 bar 的均价
+        # 逻辑：t 时刻的值 = Mean(Price[t+1] ... Price[t+8])
+        # 注意：shift(-1) 是因为 rolling 默认包含自身，我们需要的是未来的
+        #计算当前波动率 (Volatility) 用于标准化
+        # 例如使用过去 24 小时的波动率 (24h * 4 = 96 bars)
+        # 加上 1e-8 防止除以零
+        indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=horizon_bars)
+        z_raw['fwd_mean_c'] = z_raw['c'].shift(-1).rolling(window=indexer).mean()
+        z_raw['curr_vol'] = z_raw['c'].pct_change().rolling(window=96).std() + 1e-8
+
     
     print(f"  ✓ 预计算完成：未来均价(Smoothed) 与 当前波动率(Vol)")
     # ==============================================================================
@@ -1376,35 +1379,42 @@ def data_prepare_coarse_grain_rolling_offset(
             current_data_timestamps = decision_timestamps - lookup_offset
             
             # 向量化计算未来时刻
-            prediction_timestamps = decision_timestamps + prediction_horizon_td
+            prediction_timestamps = current_data_timestamps + prediction_horizon_td
 
             # ==============================================================================
             # 🆕 第二步：向量化获取预计算好的 "平滑 Label"
             # ==============================================================================
             
             # 1. 获取当前时刻的价格 和 波动率
-            t_prices = z_raw['c'].reindex(current_data_timestamps).values
-            o_prices = z_raw['o'].reindex(current_data_timestamps).values
+            t_prices = z_raw['c'].reindex(current_data_timestamps)
+            o_prices = z_raw['o'].reindex(current_data_timestamps)
             
-            t_vols = z_raw['curr_vol'].reindex(current_data_timestamps).values
-            
-            # 2. 获取 "平滑后的未来价格"
-            # 逻辑：Label = ln(未来 / 当前)
-            # "未来" 是从 12:00 开始算的。z_raw.loc['12:00'] 正好代表 [12:00, 12:15) 及其后续
-            # 所以，未来的取值 直接用 decision_timestamps (12:00) 是对的！
-            # 解释：z_raw['fwd_mean_c'] 在 12:00 这一行，存的是 shift(-1) 后的均值
-            #      即 Mean(Price[12:15], Price[12:30]...)。这正是我们要的 "决策点之后的未来"
-            t_future_smooth = z_raw['fwd_mean_c'].reindex(decision_timestamps).values
-            
-            # 3. 计算 Log Return (Smoothed)
-            # 逻辑：ln(未来均价 / 当前价格)
-            return_p = t_future_smooth / t_prices
-            raw_log_ret = np.log(return_p)
-            
-            # 4. 波动率标准化 (Vol-Scaling)
-            # 逻辑：收益率 / 波动率 = 类似夏普比率的分数
-            # 这就是你要的 "Vol-Scaled Label"
-            scaled_label = raw_log_ret / t_vols
+            t_future_smooth = None
+            scaled_label = None
+            return_p = None
+            if predict_label == 'future_price': 
+                t_vols = z_raw['curr_vol'].reindex(current_data_timestamps).values
+                # 2. 获取 "平滑后的未来价格"
+                # 逻辑：Label = ln(未来 / 当前)
+                # "未来" 是从 12:00 开始算的。z_raw.loc['12:00'] 正好代表 [12:00, 12:15) 及其后续
+                # 所以，未来的取值 直接用 decision_timestamps (12:00) 是对的！
+                # 解释：z_raw['fwd_mean_c'] 在 12:00 这一行，存的是 shift(-1) 后的均值
+                #      即 Mean(Price[12:15], Price[12:30]...)。这正是我们要的 "决策点之后的未来"
+                t_future_smooth = z_raw['fwd_mean_c'].reindex(decision_timestamps).values
+
+                # 3. 计算 Log Return (Smoothed)
+                # 逻辑：ln(未来均价 / 当前价格)
+                return_p = t_future_smooth / t_prices.values
+                raw_log_ret = np.log(return_p)
+                
+                # 4. 波动率标准化 (Vol-Scaling)
+                # 逻辑：收益率 / 波动率 = 类似夏普比率的分数
+                # 这就是你要的 "Vol-Scaled Label"
+                scaled_label = raw_log_ret / t_vols
+            else:
+                t_future_smooth = z_raw['c'].reindex(prediction_timestamps).values
+                return_p = t_future_smooth / t_prices.values
+                scaled_label = np.log(return_p)
             
             # 存入 DataFrame
             features_df['feature_offset'] = offset.total_seconds() / 60            
@@ -1412,10 +1422,11 @@ def data_prepare_coarse_grain_rolling_offset(
             
             # 将标签添加到features_df
             features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
+            features_df['current_data_timestamps'] = current_data_timestamps
             features_df['decision_timestamps'] = decision_timestamps
             features_df['prediction_timestamps'] = prediction_timestamps
-            features_df['t_price'] = t_prices
-            features_df['o_price'] = o_prices
+            features_df['t_price'] = t_prices.values
+            features_df['o_price'] = o_prices.values
             features_df['t_future_price'] = t_future_smooth
             features_df['return_f'] = scaled_label
             features_df['return_p'] = return_p
@@ -1495,7 +1506,7 @@ def data_prepare_coarse_grain_rolling_offset(
     
     # 提取特征列
     exclude_cols = ['t_price', 'o_price', 't_future_price', 'return_p', 'return_f', 
-                   'prediction_timestamps', 'ret_rolling_zscore', 'feature_offset', 'decision_timestamps']
+                   'prediction_timestamps', 'ret_rolling_zscore', 'feature_offset', 'decision_timestamps', 'current_data_timestamps']
     feature_cols = [col for col in df_samples.columns if col not in exclude_cols]
     
     X_all = df_samples[feature_cols]

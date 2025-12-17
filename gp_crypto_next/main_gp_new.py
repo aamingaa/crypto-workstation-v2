@@ -172,7 +172,9 @@ class GPAnalyzer:
                     read_frequency=self.read_frequency, 
                     timeframe=self.timeframe,
                     file_path=self.file_path,
-                    include_categories = getattr(self, 'include_categories', ['momentum']))
+                    include_categories = getattr(self, 'include_categories', ['momentum']),
+                    predict_label = getattr(self, 'predict_label', 'norm')
+                    )
             elif str(self.data_source).lower() == 'kline':
                 self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc= dataload.data_prepare(
                     self.sym, 

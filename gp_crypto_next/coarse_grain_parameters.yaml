@@ -17,7 +17,7 @@ read_frequency: 'monthly'
 
 # ===== 粗粒度特征 + 细粒度滚动配置 =====
 # data_source: coarse_grain kline factor_visualize # 使用粗粒度特征方法
-data_source: kline
+data_source: coarse_grain
 
 # 粗粒度特征桶周期（2小时为基本单位）
 coarse_grain_period: '2h'
@@ -34,31 +34,15 @@ rolling_step: '15min'
 include_categories: ['momentum'] # ['liq', 'momentum', 'volatility', 'reversal', 'volume_price', 'impact', 'structure', 'moving_average', 'oscillator', 'bands', 'microcycle']
 execution_mode: 'once'   # 'once' or 'loop'
 
-# gp_settings:
-#   population_size: 200
-#   hall_of_fame: 100
-#   n_components: 50
-#   generations: 2
-#   tournament_size: 8
-#   const_range: null
-#   init_depth: [1, 3]
-#   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
-#   parsimony_coefficient: 0.0005
-#   p_crossover: 0.8
-#   p_subtree_mutation: 0.02
-#   p_hoist_mutation: 0.02
-#   p_point_mutation: 0.02
-#   p_point_replace: 0.5
-#   corrcoef_threshold: 0.8
-#   n_jobs: -1
-
+# future vol-scaled label or norm label future_price
+predict_label: 'norm' 
 
 gp_settings:
-  population_size: 2000
-  hall_of_fame: 1000
-  n_components: 500
-  generations: 3
-  tournament_size: 88
+  population_size: 200
+  hall_of_fame: 100
+  n_components: 50
+  generations: 2
+  tournament_size: 8
   const_range: null
   init_depth: [1, 3]
   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
@@ -72,21 +56,40 @@ gp_settings:
   n_jobs: -1
 
 
-gp_settings:
-  population_size: 20000
-  hall_of_fame: 10000
-  n_components: 5000
-  generations: 3
-  tournament_size: 888
-  const_range: null
-  init_depth: [1, 3]
-  metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold'
-  parsimony_coefficient: 0.0005
-  p_crossover: 0.8
-  p_subtree_mutation: 0.02
-  p_hoist_mutation: 0.02
-  p_point_mutation: 0.02
-  p_point_replace: 0.5
-  corrcoef_threshold: 0.8
-  n_jobs: -1
+# gp_settings:
+#   population_size: 2000
+#   hall_of_fame: 1000
+#   n_components: 500
+#   generations: 3
+#   tournament_size: 88
+#   const_range: null
+#   init_depth: [1, 3]
+#   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold', rolling_rank_sic
+#   parsimony_coefficient: 0.0005
+#   p_crossover: 0.8
+#   p_subtree_mutation: 0.02
+#   p_hoist_mutation: 0.02
+#   p_point_mutation: 0.02
+#   p_point_replace: 0.5
+#   corrcoef_threshold: 0.8
+#   n_jobs: -1
+
+
+# gp_settings:
+#   population_size: 20000
+#   hall_of_fame: 10000
+#   n_components: 5000
+#   generations: 3
+#   tournament_size: 888
+#   const_range: null
+#   init_depth: [1, 3]
+#   metric: 'avg_sic'  # 'avg_pic', 'avg_sic', 'sharp', 'calmar', 'sharpe_fixed_threshold', 'sharpe_std_threshold'
+#   parsimony_coefficient: 0.0005
+#   p_crossover: 0.8
+#   p_subtree_mutation: 0.02
+#   p_hoist_mutation: 0.02
+#   p_point_mutation: 0.02
+#   p_point_replace: 0.5
+#   corrcoef_threshold: 0.8
+#   n_jobs: -1
 
