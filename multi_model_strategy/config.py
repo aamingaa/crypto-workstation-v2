@@ -49,7 +49,7 @@ class StrategyConfig:
             # 使用训练集预测绝对值的分位数作为阈值，仅在“强信号” bar 上持仓
             # 例如 70 表示使用 |pred_train| 的 70% 分位数作为阈值
             # 设为 None 可关闭该离散化逻辑，保持连续仓位
-            'signal_strength_pct': None,
+            'signal_strength_pct': 70,
 
             # 参数搜索（网格搜索）相关配置
             # 是否在单独调用 run_param_search 时启用这些默认网格

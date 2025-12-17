@@ -44,7 +44,8 @@ from multi_model_strategy import create_strategy_from_yaml
 factor_expressions = [
     # 'ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10)))'
     # ,'ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd)))'
-    'ta_lr_slope_20(ta_trima_8(ori_ta_macd))'
+    # 'ta_lr_slope_20(ta_trima_8(ori_ta_macd))',
+    'ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10))))'
     # ,'TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))'
 ]
 
