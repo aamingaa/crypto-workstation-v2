@@ -1376,7 +1376,8 @@ def data_prepare_coarse_grain_rolling_offset(
             # 2. 【核心修正】计算在 z_raw (Open Time Index) 中对应的“当前行”
             # 如果决策时间是 12:00，我们需要取 11:45 开始的那根 K 线 (因为它在 12:00 结束)
             lookup_offset = pd.Timedelta(rolling_step) # 例如 15min
-            current_data_timestamps = decision_timestamps - lookup_offset
+            # current_data_timestamps = decision_timestamps - lookup_offset
+            current_data_timestamps = decision_timestamps
             
             # 向量化计算未来时刻
             prediction_timestamps = current_data_timestamps + prediction_horizon_td
@@ -1422,12 +1423,12 @@ def data_prepare_coarse_grain_rolling_offset(
             
             # 将标签添加到features_df
             features_df['feature_offset'] = offset.total_seconds() / 60  # 转换为分钟
-            features_df['current_data_timestamps'] = current_data_timestamps
             features_df['decision_timestamps'] = decision_timestamps
+            features_df['current_data_timestamps'] = current_data_timestamps
             features_df['prediction_timestamps'] = prediction_timestamps
             features_df['t_price'] = t_prices.values
-            features_df['o_price'] = o_prices.values
             features_df['t_future_price'] = t_future_smooth
+            features_df['o_price'] = o_prices.values
             features_df['return_f'] = scaled_label
             features_df['return_p'] = return_p
 
