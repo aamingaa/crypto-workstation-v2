@@ -1,13 +1,2 @@
 factor,IC,RankIC,|IC|
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",0.020116506380707666,0.01725936610571873,0.020116506380707666
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",0.01692533371938714,0.0169054128201469,0.01692533371938714
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",0.016218814186420644,0.01730877396115713,0.016218814186420644
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.015358162805473075,0.013559054848919967,0.015358162805473075
-"TA_SAR(close_macd, ta_dema_55(vol))",0.014721598166561241,0.005718678770244574,0.014721598166561241
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.014706869892924185,0.008355017063411905,0.014706869892924185
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),0.014690257481820996,0.015330362050743583,0.014690257481820996
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),0.014300029440196876,-0.011850418537714872,0.014300029440196876
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),0.014246259593078223,0.017029024539915696,0.014246259593078223
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),0.013213136215307337,0.01643976878737817,0.013213136215307337
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",0.013176195105802724,0.02238085737431321,0.013176195105802724
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",0.009485882424370106,0.011897198066522664,0.009485882424370106
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),0.014951417073217668,0.021633302245883616,0.014951417073217668

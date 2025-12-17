@@ -1,73 +1,7 @@
 factor,horizon,IC,RankIC
-"TA_SAR(close_macd, ta_dema_55(vol))",2,0.009967267443990603,0.006435301122561135
-"TA_SAR(close_macd, ta_dema_55(vol))",4,0.01552331277158829,0.005575910363634236
-"TA_SAR(close_macd, ta_dema_55(vol))",6,0.018714353187273085,0.002958778342377496
-"TA_SAR(close_macd, ta_dema_55(vol))",8,0.02134644772252632,0.004942433510280406
-"TA_SAR(close_macd, ta_dema_55(vol))",10,0.022665395529138675,0.005465407426581158
-"TA_SAR(close_macd, ta_dema_55(vol))",12,0.021878470047785974,0.0015705271735536933
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",2,0.019474434029303333,0.002307825012038988
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",4,0.027578707162314794,-0.00018270493779118434
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",6,0.03281286294467814,-0.00011990786707536401
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",8,0.03544651029984942,-0.0009991480077497553
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",10,0.036701575927551036,-0.00403640079570957
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_cmo_14(ta_dx_14(donchian_pos_200, vol_ccy, trend_slope_24)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",12,0.03754963025249443,-0.004556740425356607
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",2,0.016282462869941353,0.006158487369034452
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",4,0.022609542045618807,0.0051135821019260555
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",6,0.026803263200166943,0.0062598522736413255
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",8,0.028914905883762568,0.0076975353902451775
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",10,0.029787469596511563,0.008702155873298607
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(neg(l)), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",12,0.03051647082992372,0.011886788442180402
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",2,0.013101591331217115,-0.0018551186112649083
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",4,0.01940323563926241,-0.0013641802143527257
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",6,0.024079969444958806,-0.002391555636118019
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",8,0.02724896637389389,-0.004447345513408554
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",10,0.0297147543826394,-0.00771645170056739
-"TS_COV_40(ta_atr_25(ta_tsf_5(ori_trix_55), ta_dema_8(up_ratio_24), ts_std_10(vol_ccy)), ta_ema_8(ta_dema_55(v_trix_8_obv)))",12,0.032157829630716096,-0.009100602421137747
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),2,0.008485108778149831,0.002556399117543913
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),4,0.012491458028403107,0.001009043913846194
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),6,0.015201013211515221,0.002604270534516257
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),8,0.016574071399970143,0.003083015085709033
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),10,0.016733956849795218,0.0005593710620355098
-ta_lr_slope_20(ta_trima_21(ts_range_20(TA_HT_DCPHASE(donchian_pos_50)))),12,0.015710525825677106,-0.002495977964778457
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),2,0.018106368357599097,0.007784848458751392
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),4,0.02525714222958959,0.01288746004839861
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),6,0.030192261349101558,0.01631076947522452
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),8,0.03335769316972754,0.018169823447804743
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),10,0.03501608969043917,0.020584256862036687
-ta_lr_slope_20(ta_trima_8(ori_ta_macd)),12,0.03531025564286271,0.023975811672725916
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",2,0.012939235004783322,0.00864862224490109
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",4,0.017495145460488564,0.010734891976503833
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",6,0.018976613685054884,0.012380684937812761
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",8,0.01803733604632383,0.015506990328862451
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",10,0.01999326056024993,0.021606528190240788
-"ta_minus_di_14(ta_mom_25(ta_aroonosc_25(obv_lr_slope_20, ori_trix_55)), ts_kurt_20(ta_rocr_25(vol_ccy)), ts_delta_8(ta_trix_21(up_ratio_24)))",12,0.019539915196227137,0.022127390164577196
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",2,0.02027027622906224,0.0030020751778763012
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",4,0.024122878222783164,0.005983247754681225
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",6,0.028381646678723657,0.007499661541722036
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",8,0.03314803282330788,0.007760918363450251
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",10,0.03692074942966297,0.007169272308143957
-"ta_rocp_14(ts_max_20(ta_atr_25(up_ratio_24, trend_slope_72, c_ta_tsf_5)))",12,0.03786030590346663,0.005100236639352001
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),2,0.025780425982894983,0.022878052140971286
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),4,0.034952551018670244,0.030737470367835362
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),6,0.03974203668448727,0.03477411674077941
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),8,0.04140197788807868,0.03786354384329013
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),10,0.04099395141020994,0.03922134928813203
-ta_trima_21(ta_mom_12(ta_tsf_5(h_ta_lr_angle_10))),12,0.03900803166170708,0.03909255775154916
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",2,0.022961068604511387,0.008142631040159071
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",4,0.027385377266372364,0.014100006581459905
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",6,0.029846063982670135,0.019418350817051483
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",8,0.03305454777792151,0.02182954619569963
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",10,0.03372353396789991,0.023306169447008165
-"ts_kurt_10(ts_std_10(div(ta_mfi_25(ori_trix_21, vol_ccy, ori_ta_macd, v_trix_8_obv), ori_trix_21)))",12,0.03389350074995787,0.02213522112888682
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",2,0.011340597282817853,0.005931595548500635
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",4,0.017310786087783775,0.006891564620925095
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",6,0.022402940781592204,0.0061416527643113755
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",8,0.02527423864467622,0.00646980697593924
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",10,0.028751747971791402,0.005189456172005966
-"ts_lag_3(ts_argmin_20(ta_lr_intercept_5(mul(trend_slope_72, ori_ta_macd))))",12,0.030085196227633268,0.0049498087082536025
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),2,0.0004946071161695613,0.0016053581684169337
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),4,0.0034272770547477097,-0.001422170248242667
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),6,0.005522396294305569,0.00028093934190183563
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),8,0.009409365229246621,0.0007652598396478658
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),10,0.010317673472249956,-0.0017988857220230107
-ts_mean_return_10(ts_argmax_20(ts_min_5(ori_ta_macd))),12,0.011624775136623921,-0.0006155112593587665
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),2,0.009518056881602004,0.008502213250711927
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),4,0.01329219920652012,0.01328968037653397
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),6,0.015838365701267152,0.017875354748833627
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),8,0.017581107689841044,0.023132366743985684
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),10,0.018846688456565133,0.02634713062001728
+ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10)))),12,0.019749004551172896,0.02878469463590634

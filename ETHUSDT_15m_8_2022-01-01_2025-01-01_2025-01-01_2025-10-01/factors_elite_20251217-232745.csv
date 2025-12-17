@@ -1,0 +1,2 @@
+,expression
+0,ta_lr_intercept_20(ts_range_20(ts_wma_55(ts_wma_8(o_ta_lr_slope_10))))
