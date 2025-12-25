@@ -26,12 +26,11 @@ seaborn==0.13.2
 sortedcontainers==2.4.0
 statsmodels==0.14.1
 ta==0.11.0
-TA-Lib==0.4.32
-tables==3.8.0
+# TA-Lib==0.4.32
+# tables==3.8.0
 tardis-dev==2.1.2
-tensorboard-data-server==0.7.2
 torch==2.4.1
 tqdm==4.67.1
 tzdata==2023.3
 unicodedata2==15.1.0
-xgboost==2.1.4
+# xgboost==2.1.4
