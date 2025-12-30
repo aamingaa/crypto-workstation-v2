@@ -293,4 +293,4 @@ if __name__ == "__main__":
 
     # https://docs.tardis.dev/historical-data-details/binance-futures openInterest topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
-    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-10-01", to_date="2025-12-01", channel_name="topLongShortPositionRatio", symbols=["ethusdt"]))
+    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-01-01", to_date="2025-10-01", channel_name="topLongShortPositionRatio", symbols=["ethusdt"]))

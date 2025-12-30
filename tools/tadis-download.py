@@ -132,7 +132,7 @@ def download(exchange_id: str, symbol: str, data_types, from_date: str, to_date:
         to_date=to_date,     # 非包含
         symbols=[symbol],
         api_key=API_KEY,
-        download_dir=DOWNLOAD_DIR,
+        download_dir=os.path.join(DOWNLOAD_DIR, data_types[0]),
     )
 
 def list_days(from_date: str, to_date: str, inclusive_end: bool = False) -> Optional[List[str]]:
@@ -201,20 +201,20 @@ def deal_liquidations_data(df: pd.DataFrame, freq: str="15min"):
     # print(df_15m.head())
     return df_freq
 
-def read_liquidations_data(symbol: str="ETHUSDT", from_date: str="2025-02-01", to_date: str="2025-02-02"):
+# def read_liquidations_data(symbol: str="ETHUSDT", from_date: str="2025-02-01", to_date: str="2025-02-02"):
    
-    _list_days = list_days(from_date, to_date)
-    df_list = []
-    for day in _list_days:
-        df = pd.read_csv(f"{DOWNLOAD_DIR}/liquidations/binance-futures_liquidations_{day}_{symbol}.csv.gz")
-        df.rename(columns={'timestamp': 'open_time'}, inplace=True)
-        df['open_time'] = pd.to_datetime(df['open_time'], unit='us')
-        df.set_index('open_time', inplace=True)
-        df.drop(columns=['symbol', 'local_timestamp', 'id'], inplace=True)
-        df_list.append(df)
-    result_df = pd.concat(df_list)
-    result_df.sort_index(inplace=True)
-    return result_df
+#     _list_days = list_days(from_date, to_date)
+#     df_list = []
+#     for day in _list_days:
+#         df = pd.read_csv(f"{DOWNLOAD_DIR}/liquidations/binance-futures_liquidations_{day}_{symbol}.csv.gz")
+#         df.rename(columns={'timestamp': 'open_time'}, inplace=True)
+#         df['open_time'] = pd.to_datetime(df['open_time'], unit='us')
+#         df.set_index('open_time', inplace=True)
+#         df.drop(columns=['symbol', 'local_timestamp', 'id'], inplace=True)
+#         df_list.append(df)
+#     result_df = pd.concat(df_list)
+#     result_df.sort_index(inplace=True)
+#     return result_df
 
 def read_derivative_ticker_data(symbol: str="ETHUSDT", from_date: str="2025-02-01", to_date: str="2025-02-02"):
    
@@ -274,7 +274,7 @@ if __name__ == "__main__":
     # ---- 你确认好某个 exchange 的 dataTypes 名称后，把下面替换成真实名字即可 ----
     # 例如你找到的可能是 ["open_interest", "liquidations", ...derivative_ticker]（以实际输出为准）
     
-    # download("binance-futures", "ETHUSDT", ["derivative_ticker"], "2022-01-01", "2025-11-01")
+    download("binance-futures", "ETHUSDT", ["liquidations"], "2025-11-01", "2025-12-01")
    
     # df = read_liquidations_data(symbol="ETHUSDT", from_date="2025-02-01", to_date="2025-02-03")
     # df_freq = deal_liquidations_data(df, freq="15min")
@@ -292,4 +292,4 @@ if __name__ == "__main__":
 
     # https://docs.tardis.dev/historical-data-details/binance-futures topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
-    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-10-01", to_date="2025-12-01", channel_name="openInterest", symbols=["ethusdt"]))
+    # asyncio.run(replay_data(exchange="binance-futures", from_date="2025-10-01", to_date="2025-12-01", channel_name="openInterest", symbols=["ethusdt"]))
