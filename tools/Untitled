@@ -1,0 +1,1 @@
+        print(f"✅ 已保存: {channel_name} -> {month_str} -> {len(df_month)} 条记录")

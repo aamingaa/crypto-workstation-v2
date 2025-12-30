@@ -18,7 +18,7 @@ CANDIDATE_EXCHANGES = [
 ]
 client = TardisClient(api_key=API_KEY)
 
-async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-01", to_date: str="2023-01-02", channel_name: str="topLongShortAccountRatio", symbols: Optional[List[str]] = ["ethusdt"]):
+async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-01", to_date: str="2023-01-02", channel_name: str="openInterest", symbols: Optional[List[str]] = ["ethusdt"]):
     # 设定要下载的时间段 (Tardis 保存了数年的历史数据)
     messages = client.replay(
         exchange=exchange,
@@ -39,14 +39,14 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         if not data_list:
             return
         df_month = pd.DataFrame(data_list)
-        df_month.rename(columns={'time': 'open_time'}, inplace=True)
+        df_month.rename(columns={'timestamp': 'open_time'}, inplace=True)
         df_month['open_time'] = pd.to_datetime(df_month['open_time'], unit='ms')
         df_month.set_index('open_time', inplace=True)
         df_month.sort_index(inplace=True)
         
         out_path = os.path.join(out_dir, f"{channel_name}_{month_str}.csv")
         df_month.to_csv(out_path)
-        print(f"✅ 已保存: {month_str} -> {len(df_month)} 条记录")
+        print(f"✅ 已保存: {channel_name} -> {month_str} -> {len(df_month)} 条记录")
     
     # 创建输出目录
     out_dir = os.path.join(DOWNLOAD_DIR, channel_name)
@@ -66,7 +66,7 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         count += 1
         
         # 获取时间戳并确定所属月份
-        timestamp = pd.to_datetime(msg['time'], unit='ms')
+        timestamp = pd.to_datetime(msg['timestamp'], unit='ms')
         month_key = timestamp.strftime("%Y-%m")
         
         # 检测到月份切换：保存上个月的数据
@@ -290,6 +290,6 @@ if __name__ == "__main__":
     # print(df_freq.head())
 
 
-    # https://docs.tardis.dev/historical-data-details/binance-futures topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
+    # https://docs.tardis.dev/historical-data-details/binance-futures openInterest topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
-    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-10-01", to_date="2025-12-01", channel_name="openInterest", symbols=["ethusdt"]))
+    asyncio.run(replay_data(exchange="binance-futures", from_date="2025-10-01", to_date="2025-12-01", channel_name="topLongShortAccountRatio", symbols=["ethusdt"]))
