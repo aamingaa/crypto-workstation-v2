@@ -1,19 +1,22 @@
 import pandas as pd
 import polars as pl
 import numpy as np
+from typing import Optional, List
+import re
 
-class LiquidationFactorEngineOptimized:
+class LiquidationFactorEngine:
     def __init__(self, resample_freq='15m'):
         """
         优化版爆仓因子挖掘引擎
         架构: Polars (Tick处理/聚合) -> Pandas (特征挖掘/时序分析)
         """
         # Polars 的时间别名略有不同: '15T' -> '15m'
-        self.freq = resample_freq.replace('T', 'm') 
+        # self.freq = resample_freq.replace('T', 'm') 
+        self.freq = '15m'
 
     def process(self, raw_df_pd, 
                 bucket_quantiles=[0.50, 0.90], 
-                bucket_window_hours=24,
+                bucket_window_hours=[24],
                 mining_windows=[24, 96, 672], 
                 mining_quantiles=[0.90, 0.95, 0.99]):
         
@@ -21,9 +24,28 @@ class LiquidationFactorEngineOptimized:
         
         # --- 阶段一：Polars 高性能聚合 (Tick -> K-Line) ---
         # 1. 转换 Pandas -> Polars LazyFrame
+        # 兼容：open_time 可能在列里，也可能在 DatetimeIndex 里（from_pandas 默认不带 index）
+        raw_df_pd = raw_df_pd.copy()
+        if "open_time" not in raw_df_pd.columns:
+            if isinstance(raw_df_pd.index, pd.DatetimeIndex):
+                # reset_index 后列名可能是：
+                # - index 有名字：该名字
+                # - index 无名字：默认 'index'
+                tmp = raw_df_pd.reset_index()
+                if "open_time" in tmp.columns:
+                    raw_df_pd = tmp
+                elif "index" in tmp.columns:
+                    raw_df_pd = tmp.rename(columns={"index": "open_time"})
+                else:
+                    # 兜底：把 reset_index 生成的第一列当作时间列
+                    raw_df_pd = tmp.rename(columns={tmp.columns[0]: "open_time"})
+            else:
+                raise ValueError("raw_df_pd 必须包含 'open_time' 列，或使用 DatetimeIndex 作为索引")
+
         # 显式转换时间列，防止类型不匹配
-        if not np.issubdtype(raw_df_pd['open_time'].dtype, np.datetime64):
-            raw_df_pd['open_time'] = pd.to_datetime(raw_df_pd['open_time'])
+        raw_df_pd["open_time"] = pd.to_datetime(raw_df_pd["open_time"], errors="coerce")
+        if raw_df_pd["open_time"].isna().any():
+            raise ValueError("open_time 存在无法解析为时间的值，请先清洗/转换")
             
         lf = pl.from_pandas(raw_df_pd).lazy()
         
@@ -56,10 +78,20 @@ class LiquidationFactorEngineOptimized:
         print(f"[+] 处理完成. 输出因子数量: {df_final.shape[1]}")
         return df_final
 
-    def _polars_dynamic_bucketing_and_agg(self, lf, quantiles, lookback_hours):
+    def _polars_dynamic_bucketing_and_agg(self, lf, quantiles, lookback_hours : Optional[List[int]] = None):
         """
         [修正版] 移除了 check_sorted 参数以适配 LazyFrame API
         """
+        # --- 参数约束：只支持 List[int]（支持多窗口） ---
+        # if lookback_hours is None:
+        #     lookback_hours = [24]
+        # if not isinstance(lookback_hours, list) or not all(isinstance(x, int) for x in lookback_hours):
+        #     raise TypeError(f"lookback_hours 必须是 List[int]，例如 [24]；当前: {type(lookback_hours).__name__} = {lookback_hours!r}")
+        # if len(lookback_hours) == 0:
+        #     raise ValueError("lookback_hours 不能为空，例如 [24] 或 [24, 72]")
+        # if any(x <= 0 for x in lookback_hours):
+        #     raise ValueError(f"lookback_hours 的元素必须为正整数；当前: {lookback_hours!r}")
+        
         # A. 计算每小时的分布阈值
         hourly_stats = (
             lf.group_by_dynamic("open_time", every="1h")
@@ -68,53 +100,62 @@ class LiquidationFactorEngineOptimized:
                 for q in quantiles
             ])
         )
-        
-        # B. 滚动平滑 & Shift (避免未来函数)
-        rolling_cols = [pl.col(f"th_{int(q*100)}") for q in quantiles]
-        
-        hourly_thresholds = (
-            hourly_stats
-            .with_columns([
-                c.rolling_mean(window_size=lookback_hours, min_periods=1)
-                 .shift(1) 
-                 .name.suffix("_roll")
-                for c in rolling_cols
-            ])
-            .select(["open_time"] + [f"th_{int(q*100)}_roll" for q in quantiles])
-        )
 
-        # C. 极速合并 (ASOF Join) & 打标签
-        low_col = f"th_{int(quantiles[0]*100)}_roll"
-        high_col = f"th_{int(quantiles[-1]*100)}_roll"
-        
-        lf_labeled = (
-            lf.join_asof(hourly_thresholds, on="open_time", strategy="backward")
-            .with_columns(
-                pl.when(pl.col("value") > pl.col(high_col)).then(pl.lit("large"))
-                .when(pl.col("value") <= pl.col(low_col)).then(pl.lit("small"))
-                .otherwise(pl.lit("med"))
-                .alias("size_bucket")
+        # B/C. 多窗口滚动平滑阈值 + ASOF join + 打标签
+        th_base_names = [f"th_{int(q*100)}" for q in quantiles]
+        lf_labeled = lf
+
+        for w in lookback_hours:
+            th_suffix = f"_roll_lb{w}"
+            bucket_col = f"size_bucket_lb{w}"
+
+            hourly_thresholds_w = (
+                hourly_stats
+                .with_columns([
+                    pl.col(name).rolling_mean(window_size=w, min_samples=1)
+                    .shift(1)
+                    .alias(f"{name}{th_suffix}")
+                    for name in th_base_names
+                ])
+                .select(["open_time"] + [f"th_{int(q*100)}{th_suffix}" for q in quantiles])
             )
-        )
+
+            low_col = f"th_{int(quantiles[0]*100)}{th_suffix}"
+            high_col = f"th_{int(quantiles[-1]*100)}{th_suffix}"
+
+            lf_labeled = (
+                lf_labeled
+                .join_asof(hourly_thresholds_w, on="open_time", strategy="backward")
+                .with_columns(
+                    pl.when(pl.col("value") > pl.col(high_col)).then(pl.lit("large"))
+                    .when(pl.col("value") <= pl.col(low_col)).then(pl.lit("small"))
+                    .otherwise(pl.lit("med"))
+                    .alias(bucket_col)
+                )
+            )
         
         # D. 聚合
         agg_exprs = []
         
         # 1. Sum & Count
-        for side in ['long', 'short']:
-            for size in ['large', 'small', 'med']:
-                agg_exprs.append(
-                    pl.col("value")
-                    .filter((pl.col("liq_type") == side) & (pl.col("size_bucket") == size))
-                    .sum()
-                    .alias(f"sum_{side}_{size}")
-                )
-                agg_exprs.append(
-                    pl.col("value")
-                    .filter((pl.col("liq_type") == side) & (pl.col("size_bucket") == size))
-                    .count()
-                    .alias(f"count_{side}_{size}")
-                )
+        for w in lookback_hours:
+            bucket_col = f"size_bucket_lb{w}"
+            out_suffix = f"_lb{w}"
+
+            for side in ['long', 'short']:
+                for size in ['large', 'small', 'med']:
+                    agg_exprs.append(
+                        pl.col("value")
+                        .filter((pl.col("liq_type") == side) & (pl.col(bucket_col) == size))
+                        .sum()
+                        .alias(f"sum_{side}_{size}{out_suffix}")
+                    )
+                    agg_exprs.append(
+                        pl.col("value")
+                        .filter((pl.col("liq_type") == side) & (pl.col(bucket_col) == size))
+                        .count()
+                        .alias(f"count_{side}_{size}{out_suffix}")
+                    )
         
         # 2. Distribution Shape
         for side in ['long', 'short']:
@@ -145,23 +186,43 @@ class LiquidationFactorEngineOptimized:
         # 1. 基础填补
         df = df.fillna(0)
         
-        # 2. 净爆仓压力 (Net Burn) - 核心博弈指标
-        # 聚合所有 size 的总和
-        cols = df.columns
-        long_sum_cols = [c for c in cols if 'sum_long' in c]
-        short_sum_cols = [c for c in cols if 'sum_short' in c]
-        
-        df['total_vol_long'] = df[long_sum_cols].sum(axis=1)
-        df['total_vol_short'] = df[short_sum_cols].sum(axis=1)
-        
-        df['diff_net_burn_vol'] = df['total_vol_long'] - df['total_vol_short']
-        
-        # 3. 鲸鱼比例 (Whale Ratio)
-        if 'sum_long_large' in df.columns:
-            df['ratio_whale_long'] = df['sum_long_large'] / (df['total_vol_long'] + 1e-9)
-        if 'sum_short_large' in df.columns:
-            df['ratio_whale_short'] = df['sum_short_large'] / (df['total_vol_short'] + 1e-9)
-            
+        cols = list(df.columns)
+
+        # 2. 支持多 lookback 版本的派生（通过列名后缀 _lb{w} 识别）
+        # 仅支持带 _lb{w} 后缀的版本（不再输出无后缀主窗口列）
+        variants: set[str] = set()
+        pattern = re.compile(r"^sum_long_(?:large|small|med)_lb(\d+)$")
+        for c in cols:
+            m = pattern.match(c)
+            if m:
+                variants.add(m.group(1))
+
+        def _sum_cols(prefix: str, variant: str) -> List[str]:
+            return [f"{prefix}_large_lb{variant}", f"{prefix}_small_lb{variant}", f"{prefix}_med_lb{variant}"]
+
+        for v in sorted(variants, key=lambda x: int(x)):
+            suffix = f"_lb{v}"
+
+            long_sum_cols = [c for c in _sum_cols("sum_long", v) if c in df.columns]
+            short_sum_cols = [c for c in _sum_cols("sum_short", v) if c in df.columns]
+
+            if not long_sum_cols and not short_sum_cols:
+                continue
+
+            df[f"total_vol_long{suffix}"] = df[long_sum_cols].sum(axis=1) if long_sum_cols else 0.0
+            df[f"total_vol_short{suffix}"] = df[short_sum_cols].sum(axis=1) if short_sum_cols else 0.0
+
+            # 净爆仓压力 (Net Burn)
+            df[f"diff_net_burn_vol{suffix}"] = df[f"total_vol_long{suffix}"] - df[f"total_vol_short{suffix}"]
+
+            # 鲸鱼比例 (Whale Ratio)
+            long_large = f"sum_long_large{suffix}"
+            short_large = f"sum_short_large{suffix}"
+            if long_large in df.columns:
+                df[f"ratio_whale_long{suffix}"] = df[long_large] / (df[f"total_vol_long{suffix}"] + 1e-9)
+            if short_large in df.columns:
+                df[f"ratio_whale_short{suffix}"] = df[short_large] / (df[f"total_vol_short{suffix}"] + 1e-9)
+
         return df
 
     def _cross_dimensional_mining(self, df, windows, quantiles):
@@ -207,7 +268,7 @@ class LiquidationFactorEngineOptimized:
 
             # 合并
             df_mining = pd.concat([df_mining, z_scores, ratio_feats], axis=1)
-
+                        
         return df_mining
 
 # ==========================================
