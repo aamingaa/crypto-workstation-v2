@@ -82,15 +82,6 @@ class LiquidationFactorEngine:
         """
         [修正版] 移除了 check_sorted 参数以适配 LazyFrame API
         """
-        # --- 参数约束：只支持 List[int]（支持多窗口） ---
-        # if lookback_hours is None:
-        #     lookback_hours = [24]
-        # if not isinstance(lookback_hours, list) or not all(isinstance(x, int) for x in lookback_hours):
-        #     raise TypeError(f"lookback_hours 必须是 List[int]，例如 [24]；当前: {type(lookback_hours).__name__} = {lookback_hours!r}")
-        # if len(lookback_hours) == 0:
-        #     raise ValueError("lookback_hours 不能为空，例如 [24] 或 [24, 72]")
-        # if any(x <= 0 for x in lookback_hours):
-        #     raise ValueError(f"lookback_hours 的元素必须为正整数；当前: {lookback_hours!r}")
         
         # A. 计算每小时的分布阈值
         hourly_stats = (
