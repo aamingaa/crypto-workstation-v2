@@ -5,17 +5,19 @@ from typing import Optional, List
 import re
 
 class LiquidationFactorEngine:
-    def __init__(self, resample_freq='15m'):
+    def __init__(self, raw_df_pd: pd.DataFrame, resample_freq='15m', stat_freq='15m'):
         """
         优化版爆仓因子挖掘引擎
         架构: Polars (Tick处理/聚合) -> Pandas (特征挖掘/时序分析)
         """
         # Polars 的时间别名略有不同: '15T' -> '15m'
         # self.freq = resample_freq.replace('T', 'm') 
-        self.freq = '15m'
+        self.raw_df_pd = raw_df_pd
+        self.freq = resample_freq
+        self.stat_freq = stat_freq
 
-    def process(self, raw_df_pd, 
-                bucket_quantiles=[0.50, 0.90], 
+    def process(self,
+                bucket_quantiles=[0.90], 
                 bucket_window_hours=[24],
                 mining_windows=[24, 96, 672], 
                 mining_quantiles=[0.90, 0.95, 0.99]):
@@ -25,29 +27,29 @@ class LiquidationFactorEngine:
         # --- 阶段一：Polars 高性能聚合 (Tick -> K-Line) ---
         # 1. 转换 Pandas -> Polars LazyFrame
         # 兼容：open_time 可能在列里，也可能在 DatetimeIndex 里（from_pandas 默认不带 index）
-        raw_df_pd = raw_df_pd.copy()
-        if "open_time" not in raw_df_pd.columns:
-            if isinstance(raw_df_pd.index, pd.DatetimeIndex):
+        # raw_df_pd_copy = self.raw_df_pd.copy()
+        if "open_time" not in self.raw_df_pd.columns:
+            if isinstance(self.raw_df_pd.index, pd.DatetimeIndex):
                 # reset_index 后列名可能是：
                 # - index 有名字：该名字
                 # - index 无名字：默认 'index'
-                tmp = raw_df_pd.reset_index()
+                tmp = self.raw_df_pd.reset_index()
                 if "open_time" in tmp.columns:
-                    raw_df_pd = tmp
+                    self.raw_df_pd = tmp
                 elif "index" in tmp.columns:
-                    raw_df_pd = tmp.rename(columns={"index": "open_time"})
+                    self.raw_df_pd = tmp.rename(columns={"index": "open_time"})
                 else:
                     # 兜底：把 reset_index 生成的第一列当作时间列
-                    raw_df_pd = tmp.rename(columns={tmp.columns[0]: "open_time"})
+                    self.raw_df_pd = tmp.rename(columns={tmp.columns[0]: "open_time"})
             else:
                 raise ValueError("raw_df_pd 必须包含 'open_time' 列，或使用 DatetimeIndex 作为索引")
 
         # 显式转换时间列，防止类型不匹配
-        raw_df_pd["open_time"] = pd.to_datetime(raw_df_pd["open_time"], errors="coerce")
-        if raw_df_pd["open_time"].isna().any():
+        self.raw_df_pd["open_time"] = pd.to_datetime(self.raw_df_pd["open_time"], errors="coerce")
+        if self.raw_df_pd["open_time"].isna().any():
             raise ValueError("open_time 存在无法解析为时间的值，请先清洗/转换")
             
-        lf = pl.from_pandas(raw_df_pd).lazy()
+        lf = pl.from_pandas(self.raw_df_pd).lazy()
         
         # 2. 预计算 Value 和 基础映射
         # Tardis/Binance mapping: Side 'buy' = Short Liquidation (空头爆仓)
@@ -85,7 +87,7 @@ class LiquidationFactorEngine:
         
         # A. 计算每小时的分布阈值
         hourly_stats = (
-            lf.group_by_dynamic("open_time", every="1h")
+            lf.group_by_dynamic("open_time", every=self.stat_freq)
             .agg([
                 pl.col("value").quantile(q).alias(f"th_{int(q*100)}") 
                 for q in quantiles

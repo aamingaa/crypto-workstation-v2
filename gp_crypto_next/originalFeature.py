@@ -13,11 +13,12 @@ import warnings
 import dataload
 import yaml
 from tqdm import tqdm
+from .LiquidationFeature import get_advanced_liquidation_features
 
 warnings.filterwarnings('ignore')
 
 
-def define_base_fields(rolling_zscore_window: int = 2000, include_categories: List[str] = None):
+def define_base_fields(rolling_zscore_window: int = 2000, include_categories: List[str] = None, init_ohlcva_df: pd.DataFrame = None):
     """
     本函数定义了基础的特征计算公式. 将来会持续维护这个函数，增加更多的特征计算公式
     这是唯一的定义特征的地方，其他地方不应该再定义特征
@@ -412,6 +413,9 @@ def define_base_fields(rolling_zscore_window: int = 2000, include_categories: Li
         selected_names = set()
         for cat in include_categories:
             selected_names.update(catalog.get(cat, []))
+            
+            if cat == 'liquidation':
+                features.update(get_advanced_liquidation_features(list(init_ohlcva_df.keys())))
         # 若用户传入不存在的类别，不报错，仅返回空/交集
         features = {k: v for k, v in features.items() if k in selected_names}
     
@@ -790,7 +794,7 @@ def calculate_features_df_tail(input_df, rolling_zscore_window):
 class BaseFeature:
     def __init__(self, init_ohlcva_df, include_categories: List[str] = None, rolling_zscore_window: int = 2000):
         # 将所有列转换为 double 类型
-        init_ohlcva_df = init_ohlcva_df.astype(np.float64)
+        self.init_ohlcva_df = init_ohlcva_df.astype(np.float64)
 
         self.rolling_zscore_window = rolling_zscore_window
         print('feature 定义')

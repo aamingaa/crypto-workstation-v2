@@ -35,6 +35,7 @@ from sklearn.preprocessing import RobustScaler
 import zipfile
 from io import BytesIO
 from NormDataCheck import norm, inverse_norm
+from tools.LiquidationFactorEngine import LiquidationFactorEngine
 
 
 
@@ -107,6 +108,22 @@ def _generate_date_range(start_date: str, end_date: str, read_frequency: DataFre
     else:
         raise ValueError(f"不支持的数据频率: {frequency}")
     
+
+def liquidations_data_load(sym: str, data_dir: str, start_date: str, end_date: str) -> pd.DataFrame:
+    date_range_list = _generate_date_range(start_date, end_date, DataFrequency.DAILY)
+    channel_path = 'liquidations'
+    liq_list = []
+    for date_str in date_range_list:
+        df = pd.read_csv(f'{data_dir}/{channel_path}/binance-futures_{channel_path}_{date_str}_{sym}.csv.gz')
+        liq_list.append(df)
+    liq_df = pd.concat(liq_list)
+    
+    liq_df.rename(columns={'timestamp': 'open_time'}, inplace=True)
+    liq_df['open_time'] = pd.to_datetime(liq_df['open_time'], unit='us')
+    liq_df.set_index('open_time', inplace=True)
+    liq_df.sort_index(inplace=True)
+    liq_df.drop(columns=['id', 'exchange', 'local_timestamp', 'symbol'], inplace=True)
+    return liq_df
 
 def data_load_v2(sym: str, data_dir: str, start_date: str, end_date: str, 
                  timeframe: str = '1h', read_frequency: str = 'monthly',
@@ -1283,6 +1300,16 @@ def data_prepare_coarse_grain_rolling_offset(
                          timeframe=timeframe, read_frequency=read_frequency, file_path=file_path)
     z_raw.index = pd.to_datetime(z_raw.index)
     
+
+    liq_df = liquidations_data_load(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test)
+    liq_engine = LiquidationFactorEngine(liq_df, resample_freq='15m', stat_freq='15m')
+    bucket_quantiles=[0.90], 
+    bucket_window_hours=[24],
+    mining_windows=[24, 96, 672], 
+    mining_quantiles=[0.90, 0.95, 0.99]
+    df_liq_factors = liq_engine.process(bucket_quantiles=bucket_quantiles, bucket_window_hours=bucket_window_hours, mining_windows=mining_windows, mining_quantiles=mining_quantiles)
+
+    z_raw = z_raw.join(df_liq_factors, how='left')
     z_raw = z_raw[(z_raw.index >= pd.to_datetime(start_date_train)) 
                   & (z_raw.index <= pd.to_datetime(end_date_test))]
     

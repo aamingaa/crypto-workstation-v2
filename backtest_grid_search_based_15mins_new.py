@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 import math
 import matplotlib.pyplot as plt
+from tools.LiquidationFactorEngine import LiquidationFactorEngine as liq_factor_engine
 
 def generate_etime_close_data_divd_time(bgn_date, end_date, index_code, frequency):
     """生成行情数据"""
@@ -202,3 +203,447 @@ def backtest(original_data, index_code, frequency, n_days):
 # 样本内外计算：模型质量的技术分析
 
     return indicators_frame
+
+
+# ============================================================
+# 下面是“简单版”的批量因子评估（更适合爆仓/分层挖掘出来的一堆因子）
+# - 不改动上面的 backtest()，避免影响你原来网格搜索脚本
+# - 直接复用：线性回归(样本内拟合) -> 预测 -> 仓位 -> 回测指标
+# - 额外提供：IC / RankIC、手续费、换手率、Top/Bottom 分位多空
+# ============================================================
+
+def _infer_annual_bars_from_freq(freq: str) -> int:
+    """
+    简单推断年化 bar 数：
+    - '15' / '15m' -> 365*24*4 = 35040（加密货币 7*24）
+    - 其它 -> 252（偏股票日频习惯）
+    """
+    if freq is None:
+        return 252
+    f = str(freq).lower().strip()
+    if f in ("15", "15m", "15min", "15mins", "15minute", "15minutes"):
+        return 365 * 24 * 4
+    return 252
+
+
+def _calc_ic_and_rankic(x: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """
+    返回 (IC, RankIC)
+    - IC: Pearson corr
+    - RankIC: 对 x/y 做 rank 后再算 Pearson corr（避免依赖 scipy）
+    """
+    x = np.asarray(x, dtype=float).reshape(-1)
+    y = np.asarray(y, dtype=float).reshape(-1)
+    mask = np.isfinite(x) & np.isfinite(y)
+    if mask.sum() < 50:
+        return (np.nan, np.nan)
+    xv = x[mask]
+    yv = y[mask]
+    try:
+        ic = float(np.corrcoef(xv, yv)[0, 1])
+    except Exception:
+        ic = np.nan
+    try:
+        xr = pd.Series(xv).rank(method="average").values
+        yr = pd.Series(yv).rank(method="average").values
+        rankic = float(np.corrcoef(xr, yr)[0, 1])
+    except Exception:
+        rankic = np.nan
+    return (ic, rankic)
+
+
+def _build_quantile_long_short_pos(factor_vals: np.ndarray, n_quantiles: int = 5) -> np.ndarray:
+    """顶分位 +1，底分位 -1，其它 0（简单稳定，适合单因子 sanity check）"""
+    s = pd.Series(np.asarray(factor_vals, dtype=float))
+    if s.nunique() <= 1:
+        return np.zeros(len(s), dtype=float)
+    try:
+        q = pd.qcut(s.rank(method="first"), q=n_quantiles, labels=False, duplicates="drop")
+    except Exception:
+        return np.zeros(len(s), dtype=float)
+    pos = np.zeros(len(s), dtype=float)
+    if q.max() == q.min():
+        return pos
+    pos[q == q.max()] = 1.0
+    pos[q == q.min()] = -1.0
+    return pos
+
+
+def _simulate_pnl_from_pos(
+    close: np.ndarray,
+    pos: np.ndarray,
+    fees_rate: float = 0.0005,
+    annual_bars: int = 35040,
+) -> tuple[np.ndarray, dict]:
+    """
+    用最简交易假设做回测：
+    - bar 收益用 close-to-close 的 log return
+    - 手续费按仓位变动的绝对值扣：abs(diff(pos)) * fees_rate
+    返回 (pnl_cumsum_log, metrics)
+    """
+    close = np.asarray(close, dtype=float).reshape(-1)
+    pos = np.asarray(pos, dtype=float).reshape(-1)
+    n = min(len(close), len(pos))
+    close = close[:n]
+    pos = pos[:n]
+    if n < 5:
+        return np.zeros(n, dtype=float), {
+            "Annual Return": 0.0,
+            "Sharpe Ratio": 0.0,
+            "MAX_Drawdown": 0.0,
+            "Turnover_per_bar": 0.0,
+        }
+
+    rets = np.concatenate([[0.0], np.diff(np.log(close))])  # 每bar log return
+    pos_change = np.concatenate([[0.0], np.diff(pos)])
+    gain_loss = pos * rets - np.abs(pos_change) * float(fees_rate)
+    pnl = np.cumsum(gain_loss)
+
+    mean_ret = float(np.mean(gain_loss))
+    std_ret = float(np.std(gain_loss)) if len(gain_loss) > 1 else 0.0
+    annual_ret = mean_ret * int(annual_bars)
+    sharpe = annual_ret / (std_ret * math.sqrt(int(annual_bars))) if std_ret > 0 else 0.0
+
+    equity = np.exp(pnl)
+    peak = np.maximum.accumulate(equity)
+    peak = np.where(peak == 0, 1.0, peak)
+    drawdown = equity / peak - 1.0
+    max_dd = float(np.min(drawdown)) if len(drawdown) > 0 else 0.0
+
+    turnover = float(np.mean(np.abs(pos_change))) if len(pos_change) > 0 else 0.0
+
+    metrics = {
+        "Annual Return": annual_ret,
+        "Sharpe Ratio": float(sharpe),
+        "MAX_Drawdown": max_dd,
+        "Turnover_per_bar": turnover,
+    }
+    return pnl, metrics
+
+
+def evaluate_factors_simple(
+    price_df: pd.DataFrame,
+    factors_df: pd.DataFrame,
+    freq: str = "15m",
+    horizon_bars: int = 8,
+    train_end_time=None,
+    split_ratio: float = 0.7,
+    n_quantiles: int = 5,
+    fees_rate: float = 0.0005,
+    top_n: int = 30,
+) -> pd.DataFrame:
+    """
+    批量评估 factors_df 的每一列因子（简单版，不搞太多抽象）：
+    1) 对齐时间
+    2) 构造未来收益 label（horizon_bars）
+    3) 计算 train/test 的 IC、RankIC
+    4) 两套回测口径（都很简单）：
+       - 回归回测：训练集 fit LinearRegression(factor -> future_ret)，预测后转仓位（复用 calculate_positions）
+       - 分位多空：顶分位+1、底分位-1
+    输出一个汇总表，默认按 test_sharpe_lr 排序。
+
+    Args:
+        price_df: 必须含 'close'，index 或列里有时间（建议 index=DatetimeIndex）
+        factors_df: index=DatetimeIndex（建议是 open_time），列为因子
+        freq: 仅用于推断年化 bar 数
+        horizon_bars: 未来多少期收益作为 label（15m 下 8=2h）
+        train_end_time: 指定训练集截止时间（Datetime/str），否则用 split_ratio 切分
+    """
+    # if price_df is None or factors_df is None:
+    #     raise ValueError("price_df / factors_df 不能为空")
+    # if "close" not in price_df.columns:
+    #     raise ValueError("price_df 必须包含 'close' 列")
+    # if factors_df.shape[1] == 0:
+    #     raise ValueError("factors_df 没有因子列")
+
+    # 统一索引为 DatetimeIndex
+    p = price_df.copy()
+    f = factors_df.copy()
+    if not isinstance(p.index, pd.DatetimeIndex):
+        # 尝试自动找时间列
+        for c in ["open_time", "etime", "time", "datetime", "date"]:
+            if c in p.columns:
+                p[c] = pd.to_datetime(p[c], errors="coerce")
+                p = p.set_index(c)
+                break
+    if not isinstance(f.index, pd.DatetimeIndex):
+        for c in ["open_time", "etime", "time", "datetime", "date"]:
+            if c in f.columns:
+                f[c] = pd.to_datetime(f[c], errors="coerce")
+                f = f.set_index(c)
+                break
+    if not isinstance(p.index, pd.DatetimeIndex) or not isinstance(f.index, pd.DatetimeIndex):
+        raise ValueError("price_df / factors_df 需要能对齐的时间索引（DatetimeIndex 或包含可解析的时间列）")
+
+    p = p.sort_index()
+    f = f.sort_index()
+
+    # 对齐并构造 label（未来收益）
+    df = p[["close"]].join(f, how="inner")
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["close"])
+    df["ret_fwd"] = df["close"].shift(-int(horizon_bars)) / df["close"] - 1.0
+    df = df.dropna(subset=["ret_fwd"])
+
+    if len(df) < 200:
+        raise ValueError(f"对齐后样本太少：{len(df)}，请检查时间对齐或数据区间")
+
+    # 切分 train/test
+    if train_end_time is not None:
+        t_end = pd.to_datetime(train_end_time)
+        train_mask = df.index <= t_end
+        if train_mask.sum() < 50 or (~train_mask).sum() < 50:
+            raise ValueError("按 train_end_time 切分后 train/test 样本不足")
+        train_df = df[train_mask]
+        test_df = df[~train_mask]
+    else:
+        n_train = int(len(df) * float(split_ratio))
+        n_train = max(50, min(n_train, len(df) - 50))
+        train_df = df.iloc[:n_train]
+        test_df = df.iloc[n_train:]
+
+    annual_bars = _infer_annual_bars_from_freq(freq)
+
+    records = []
+    y_train = train_df["ret_fwd"].values.reshape(-1, 1)
+    y_test = test_df["ret_fwd"].values.reshape(-1, 1)
+
+    for col in f.columns:
+        x_train = train_df[col].values.reshape(-1, 1)
+        x_test = test_df[col].values.reshape(-1, 1)
+
+        # IC / RankIC（train/test 分开算）
+        ic_tr, ric_tr = _calc_ic_and_rankic(train_df[col].values, train_df["ret_fwd"].values)
+        ic_te, ric_te = _calc_ic_and_rankic(test_df[col].values, test_df["ret_fwd"].values)
+
+        # 口径 A：回归 -> 连续仓位（复用原来的 calculate_positions）
+        try:
+            model = LinearRegression(fit_intercept=True)
+            model.fit(x_train, y_train)
+            pred_train = model.predict(x_train).flatten()
+            pred_test = model.predict(x_test).flatten()
+
+            pos_train = calculate_positions(pred_train)
+            pos_test = calculate_positions(pred_test)
+            _, m_tr = _simulate_pnl_from_pos(
+                close=train_df["close"].values, pos=pos_train, fees_rate=fees_rate, annual_bars=annual_bars
+            )
+            _, m_te = _simulate_pnl_from_pos(
+                close=test_df["close"].values, pos=pos_test, fees_rate=fees_rate, annual_bars=annual_bars
+            )
+        except Exception:
+            m_tr = {"Annual Return": np.nan, "Sharpe Ratio": np.nan, "MAX_Drawdown": np.nan, "Turnover_per_bar": np.nan}
+            m_te = {"Annual Return": np.nan, "Sharpe Ratio": np.nan, "MAX_Drawdown": np.nan, "Turnover_per_bar": np.nan}
+
+        # 口径 B：分位多空（更贴近“分层挖掘”的直觉）
+        try:
+            pos_q_train = _build_quantile_long_short_pos(train_df[col].values, n_quantiles=n_quantiles)
+            pos_q_test = _build_quantile_long_short_pos(test_df[col].values, n_quantiles=n_quantiles)
+            _, mq_tr = _simulate_pnl_from_pos(
+                close=train_df["close"].values, pos=pos_q_train, fees_rate=fees_rate, annual_bars=annual_bars
+            )
+            _, mq_te = _simulate_pnl_from_pos(
+                close=test_df["close"].values, pos=pos_q_test, fees_rate=fees_rate, annual_bars=annual_bars
+            )
+        except Exception:
+            mq_tr = {"Annual Return": np.nan, "Sharpe Ratio": np.nan, "MAX_Drawdown": np.nan, "Turnover_per_bar": np.nan}
+            mq_te = {"Annual Return": np.nan, "Sharpe Ratio": np.nan, "MAX_Drawdown": np.nan, "Turnover_per_bar": np.nan}
+
+        records.append({
+            "factor": col,
+            "IC_train": ic_tr,
+            "RankIC_train": ric_tr,
+            "IC_test": ic_te,
+            "RankIC_test": ric_te,
+            "test_sharpe_lr": m_te["Sharpe Ratio"],
+            "test_mdd_lr": m_te["MAX_Drawdown"],
+            "test_turnover_lr": m_te["Turnover_per_bar"],
+            "test_sharpe_q": mq_te["Sharpe Ratio"],
+            "test_mdd_q": mq_te["MAX_Drawdown"],
+            "test_turnover_q": mq_te["Turnover_per_bar"],
+        })
+
+    out = pd.DataFrame(records)
+    # 排序优先级：测试集回归回测夏普，其次 |IC|
+    out["absIC_test"] = out["IC_test"].abs()
+    out = out.sort_values(["test_sharpe_lr", "absIC_test"], ascending=[False, False])
+
+    if top_n is not None and int(top_n) > 0:
+        return out.head(int(top_n)).reset_index(drop=True)
+    return out.reset_index(drop=True)
+
+
+def load_factors_csv_simple(path: str, time_col: str = "open_time") -> pd.DataFrame:
+    """
+    简单读因子 csv：默认假设有 open_time 列；若没有则尝试用第一列做索引。
+    """
+    df = pd.read_csv(path)
+    if time_col in df.columns:
+        df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+        df = df.set_index(time_col)
+    else:
+        # 兜底：第一列当时间
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors="coerce")
+        df = df.set_index(df.columns[0])
+    return df.sort_index()
+
+
+def plot_factor_corr_heatmap(
+    factors_df: pd.DataFrame,
+    method: str = "spearman",
+    max_factors: int = 40,
+    figsize: tuple = (10, 8),
+    title: str | None = None,
+    save_path: str | None = None,
+):
+    """
+    因子相关性 heatmap（最常用，用来查冗余/同义因子）
+    - factors_df: index=时间, columns=因子
+    - method: 'spearman'（推荐，稳一些）或 'pearson'
+    - max_factors: 因子太多会画不清，默认只画前 N 列
+    """
+    if factors_df is None or factors_df.empty:
+        raise ValueError("factors_df 为空，无法画 heatmap")
+    df = factors_df.copy()
+    # 只保留数值列
+    df = df.select_dtypes(include=[np.number])
+    if df.shape[1] == 0:
+        raise ValueError("factors_df 没有数值因子列")
+
+    cols = list(df.columns)[: int(max_factors)]
+    df = df[cols].replace([np.inf, -np.inf], np.nan).dropna(how="all")
+    corr = df.corr(method=method)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(corr.values, cmap="coolwarm", vmin=-1, vmax=1)
+    ax.set_title(title or f"Factor Correlation Heatmap ({method})")
+    ax.set_xticks(range(len(cols)))
+    ax.set_yticks(range(len(cols)))
+    ax.set_xticklabels(cols, rotation=90, fontsize=7)
+    ax.set_yticklabels(cols, fontsize=7)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+    return corr
+
+
+def plot_factor_value_heatmap(
+    factors_df: pd.DataFrame,
+    max_rows: int = 500,
+    max_factors: int = 40,
+    normalize: str = "zscore",
+    figsize: tuple = (12, 6),
+    title: str | None = None,
+    save_path: str | None = None,
+):
+    """
+    因子值 heatmap（time × factor）
+    - normalize='zscore'：按列做 z-score，便于把不同量纲的因子放一张图看
+    - 数据太大时默认抽样前 max_rows 行（你也可以先 df.iloc[-max_rows:] 看最近）
+    """
+    if factors_df is None or factors_df.empty:
+        raise ValueError("factors_df 为空，无法画 heatmap")
+    df = factors_df.copy()
+    df = df.select_dtypes(include=[np.number])
+    if df.shape[1] == 0:
+        raise ValueError("factors_df 没有数值因子列")
+
+    cols = list(df.columns)[: int(max_factors)]
+    df = df[cols].replace([np.inf, -np.inf], np.nan)
+    df = df.dropna(how="all")
+
+    # 截断行数，避免图太大
+    df = df.iloc[: int(max_rows)]
+
+    if normalize == "zscore":
+        mu = df.mean(axis=0)
+        sigma = df.std(axis=0).replace(0, np.nan)
+        df = (df - mu) / sigma
+        df = df.fillna(0.0).clip(-6, 6)
+        cmap = "RdBu_r"
+        vmin, vmax = -3, 3
+    else:
+        cmap = "viridis"
+        vmin, vmax = None, None
+
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(df.values, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
+    ax.set_title(title or f"Factor Value Heatmap ({normalize})")
+    ax.set_xlabel("Factors")
+    ax.set_ylabel("Time (rows)")
+    ax.set_xticks(range(len(cols)))
+    ax.set_xticklabels(cols, rotation=90, fontsize=7)
+    # y轴太密就不标
+    ax.set_yticks([])
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+    else:
+        plt.show()
+
+    return df
+
+
+if __name__ == "__main__":
+    # 最小示例（按你的需求：简单直观，不做复杂抽象）
+    #
+    # 1) 准备 price_df：至少要有 close
+    #    - 如果你已经有 ETH 的 15m K 线 DataFrame，确保 index 是时间即可
+    # 2) 准备 factors_df：index=时间，列=因子
+    #    - 例如 LiquidationFactorEngine().process(...) 的返回值
+    #
+    # 注意：下面只是示例入口，不会强依赖你的具体数据路径。
+    print("[demo] evaluate_factors_simple: 请替换为你的 price_df / factors_df")
+
+    # 示例：从 CSV 读取因子（你也可以直接传 DataFrame）
+    # factors_df = load_factors_csv_simple("/path/to/your_factors.csv", time_col="open_time")
+
+    # 示例：构造一个假的 price_df（请替换）
+    price_df = pd.read_csv("/path/to/your_ohlcv.csv")
+    price_df["open_time"] = pd.to_datetime(price_df["open_time"])
+    price_df = price_df.set_index("open_time").sort_index()
+
+    # 你在文件顶部用了：
+    # from tools.LiquidationFactorEngine import LiquidationFactorEngine as liq_factor_engine
+    # 这里 liq_factor_engine 实际上就是“类”，直接实例化即可
+    liq_engine = liq_factor_engine(resample_freq="15m")
+
+    bucket_quantiles = [0.75, 0.90]
+    bucket_window_hours=[24, 48]
+    mining_windows=[24]
+    mining_quantiles=[0.90]
+
+    # liq_factor_df = liq_engine.process(
+    #     liq_df,
+    #     bucket_quantiles=bucket_quantiles,
+    #     bucket_window_hours=bucket_window_hours,
+    #     mining_windows=mining_windows,
+    #     mining_quantiles=mining_quantiles,
+    # )
+
+    # print(liq_factor_df.head())
+        
+    # 然后跑评估：
+    # report = evaluate_factors_simple(
+    #     price_df=price_df,
+    #     factors_df=factors_df,
+    #     freq="15m",
+    #     horizon_bars=8,          # 15m*8 = 2h
+    #     train_end_time="2025-01-01",
+    #     n_quantiles=5,
+    #     fees_rate=0.0005,
+    #     top_n=30,
+    # )
+    # print(report)
+
+    # 画 heatmap（把 factors_df 换成你的 liq_factor_df）
+    # plot_factor_corr_heatmap(liq_factor_df, method="spearman", max_factors=40)
+    # plot_factor_value_heatmap(liq_factor_df, max_rows=500, max_factors=40, normalize="zscore")
