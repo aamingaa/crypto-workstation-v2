@@ -5,35 +5,115 @@ import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 import math
 import os
+from enum import Enum
+from typing import List, Optional
 
 # 设置中文显示
 plt.rcParams["font.family"] = ["Heiti TC", "Heiti TC"]
 plt.rcParams["axes.unicode_minus"] = False  # 解决负号显示问题
 
 
-file_path = f'/Volumes/Ext-Disk/data/futures/um/daily/klines'
+file_path = f'/Volumes/Ext-Disk/data/futures/um/monthly/klines'
 save_path = f'/Users/aming/project/python/crypto-workstation-v2/output/evaluate_metric'
 
-def generate_date_range(start_date, end_date):    
-    start = datetime.strptime(start_date, '%Y-%m-%d')
-    end = datetime.strptime(end_date, '%Y-%m-%d')
+
+class DataFrequency(Enum):
+    """数据频率枚举"""
+    MONTHLY = 'monthly'  # 月度数据
+    DAILY = 'daily'      # 日度数据
+
+
+def _generate_date_range(start_date: str, end_date: str, read_frequency: DataFrequency = DataFrequency.MONTHLY) -> List[str]:
+    """
+    生成日期范围列表
     
-    date_list = []
-    current = start
-    while current <= end:
-        date_list.append(current.strftime('%Y-%m-%d'))
-        current += timedelta(days=1)
-    return date_list
+    参数:
+    start_date: 起始日期
+        - 月度格式: 'YYYY-MM' (如 '2020-01') 或 'YYYY-MM-DD' (自动转换为 'YYYY-MM')
+        - 日度格式: 'YYYY-MM-DD' (如 '2020-01-01')
+    end_date: 结束日期，格式同上
+    frequency: 数据频率（月度或日度）
+    
+    返回:
+    日期字符串列表
+    """
+    if read_frequency == DataFrequency.MONTHLY:
+        # 兼容 'YYYY-MM' 和 'YYYY-MM-DD' 两种格式
+        # 如果是 'YYYY-MM-DD' 格式，自动截取为 'YYYY-MM'
+        new_start_date = start_date
+        new_end_date = end_date
+        if len(start_date) == 10:  # 'YYYY-MM-DD' 格式
+            new_start_date = start_date[:7]
+        if len(end_date) == 10:
+            new_end_date = end_date[:7]
+            
+        start_dt = datetime.strptime(new_start_date, '%Y-%m')
+        end_dt = datetime.strptime(new_end_date, '%Y-%m')
+        
+        date_list = []
+        current_dt = start_dt
+        while current_dt <= end_dt:
+            date_list.append(current_dt.strftime('%Y-%m'))
+            # 移动到下一个月
+            if current_dt.month == 12:
+                current_dt = current_dt.replace(year=current_dt.year + 1, month=1)
+            else:
+                current_dt = current_dt.replace(month=current_dt.month + 1)
+        
+        return date_list
+    
+    elif read_frequency == DataFrequency.DAILY:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        date_list = []
+        current_dt = start_dt
+        while current_dt <= end_dt:
+            date_list.append(current_dt.strftime('%Y-%m-%d'))
+            current_dt += timedelta(days=1)
+        
+        return date_list
+    
+    else:
+        raise ValueError(f"不支持的数据频率: {frequency}")
+    
+
+
+# def generate_date_range(start_date, end_date):    
+#     start = datetime.strptime(start_date, '%Y-%m-%d')
+#     end = datetime.strptime(end_date, '%Y-%m-%d')
+    
+#     date_list = []
+#     current = start
+#     while current <= end:
+#         date_list.append(current.strftime('%Y-%m-%d'))
+#         current += timedelta(days=1)
+#     return date_list
+
+# def generate_monthly_date_range(start_date, end_date):    
+#     start = datetime.strptime(start_date, '%Y-%m')
+#     end = datetime.strptime(end_date, '%Y-%m')
+    
+#     date_list = []
+#     current = start
+#     while current <= end:
+#         date_list.append(current.strftime('%Y-%m'))
+#         current += timedelta(days=1)
+#     return date_list
 
 def load_daily_data(file_dir:str = None, start_date:str = None, end_date:str = None, interval:str = None, crypto:str = "BNBUSDT") -> pd.DataFrame:
-    date_list = generate_date_range(start_date, end_date)
+    # date_list = generate_date_range(start_date, end_date)
+
+    date_list = _generate_date_range(start_date=start_date, end_date=end_date, read_frequency=DataFrequency.MONTHLY)
     crypto_date_data = []
     if file_dir:
         crypto_date_data.append(pd.read_csv(file_dir))
     else:
         for date in date_list:
-            suffix = "2025-01-01_2025-07-01"
-            crypto_date_data.append(pd.read_csv(f"{file_path}/{crypto}/{interval}/{suffix}/{crypto}-{interval}-{date}.zip"))
+            year = date[:4]
+            # suffix = "2025-01-01_2025-07-01"
+            crypto_date_data.append(pd.read_csv(f"{file_path}/{crypto}/{interval}/{year}/{crypto}-{interval}-{date}.zip"))
+            # crypto_date_data.append(pd.read_csv(f"{file_path}/{crypto}/{interval}/{suffix}/{crypto}-{interval}-{date}.zip"))
     
     z = pd.concat(crypto_date_data, axis=0, ignore_index=True)
     # 处理时间戳为 DatetimeIndex，便于后续按日/月/年分组和年化计算
@@ -131,7 +211,7 @@ class MAStrategyAnalyzer:
                 if self.trades and self.trades[-1]['type'] == 'buy':
                     buy_trade = self.trades[-1]
                     gross_pnl = open_price - buy_trade['price']
-                    net_pnl = gross_pnl - (sell_commission)
+                    net_pnl = gross_pnl - buy_trade['commission'] -(sell_commission)
                     self.total_pnl += net_pnl
                     current_pnl = net_pnl  # 仅在平仓时记入实现盈亏
                     self.trades.append({
@@ -328,37 +408,12 @@ class MAStrategyAnalyzer:
         return metrics
 
 # 示例数据生成和使用
-def generate_sample_data(n_periods=1000):
-    """生成示例15分钟K线数据用于测试"""
-    start_time = datetime(2023, 1, 1, 9, 30)
-    times = pd.date_range(start=start_time, periods=n_periods, freq='15T')
-    
-    # 生成带趋势的价格数据
-    base_price = 100.0
-    trend = np.linspace(0, 50, n_periods)
-    noise = np.random.normal(0, 1, n_periods).cumsum()
-    
-    close_prices = base_price + trend + noise
-    open_prices = close_prices[:-1]
-    open_prices = np.append(open_prices, close_prices[-1] * (1 + np.random.normal(0, 0.001)))
-    
-    high_prices = np.maximum(open_prices, close_prices) + np.random.uniform(0, 1, n_periods)
-    low_prices = np.minimum(open_prices, close_prices) - np.random.uniform(0, 1, n_periods)
-    
-    return pd.DataFrame({
-        'open_time': times,
-        'close_time': times + pd.Timedelta(minutes=15),
-        'open': open_prices,
-        'high': high_prices,
-        'low': low_prices,
-        'close': close_prices
-    })
 
 if __name__ == "__main__":
     # 生成示例数据
     print("生成示例15分钟K线数据...")
-    start_date = "2025-06-01"
-    end_date = "2025-06-30"
+    start_date = "2025-01"
+    end_date = "2025-12"
 
     crypto_metric={}
     # crypto_list = ["ZECUSDT","XTZUSDT","BNBUSDT","ATOMUSDT","ONTUSDT","IOTAUSDT","BATUSDT","VETUSDT","NEOUSDT","QTUMUSDT","IOSTUSDT","THETAUSDT","ALGOUSDT","ZILUSDT","KNCUSDT","ZRXUSDT","COMPUSDT","DOGEUSDT","SXPUSDT","KAVAUSDT","BANDUSDT","RLCUSDT","SNXUSDT","DOTUSDT","YFIUSDT","CRVUSDT","TRBUSDT","RUNEUSDT","SUSHIUSDT","EGLDUSDT","SOLUSDT"]
@@ -367,17 +422,17 @@ if __name__ == "__main__":
     crypto_list = ["ETHUSDT"]
     # crypto_list = ["BTCUSDT","ETHUSDT","BCHUSDT","XRPUSDT","LTCUSDT","TRXUSDT","ETCUSDT","LINKUSDT","XLMUSDT","ADAUSDT","XMRUSDT","DASHUSDT","ZECUSDT","XTZUSDT","BNBUSDT","ATOMUSDT","ONTUSDT","IOTAUSDT","BATUSDT","VETUSDT","NEOUSDT","QTUMUSDT","IOSTUSDT","THETAUSDT","ALGOUSDT","ZILUSDT","KNCUSDT","ZRXUSDT","COMPUSDT","DOGEUSDT","SXPUSDT","KAVAUSDT","BANDUSDT","RLCUSDT","SNXUSDT","DOTUSDT","YFIUSDT","CRVUSDT","TRBUSDT","RUNEUSDT","SUSHIUSDT","EGLDUSDT","SOLUSDT","ICXUSDT","STORJUSDT","UNIUSDT","AVAXUSDT","ENJUSDT","FLMUSDT","KSMUSDT","NEARUSDT","AAVEUSDT","FILUSDT","RSRUSDT","LRCUSDT","BELUSDT","AXSUSDT","ZENUSDT","SKLUSDT","GRTUSDT","1INCHUSDT","SANDUSDT","CHZUSDT","ANKRUSDT","RVNUSDT","SFPUSDT","COTIUSDT","CHRUSDT","MANAUSDT","ALICEUSDT","GTCUSDT","HBARUSDT","ONEUSDT","DENTUSDT","CELRUSDT","HOTUSDT","MTLUSDT","OGNUSDT","NKNUSDT","1000SHIBUSDT","BAKEUSDT","BTCDOMUSDT","MASKUSDT","ICPUSDT","IOTXUSDT","C98USDT","ATAUSDT","DYDXUSDT","1000XECUSDT","GALAUSDT","CELOUSDT","ARUSDT","ARPAUSDT","CTSIUSDT","LPTUSDT","ENSUSDT","PEOPLEUSDT","ROSEUSDT","DUSKUSDT","FLOWUSDT","IMXUSDT"]
     crypto_metric_list = []
-    file_dir = '/Users/aming/project/python/binance-public-data-master/python/data/futures/um/monthly/klines/ETHUSDT/15m/2025-06-01_2025-12-01/ETHUSDT-15m-2025-06.zip'
+    # file_dir = '/Users/aming/project/python/binance-public-data-master/python/data/futures/um/monthly/klines/ETHUSDT/15m/2025-06-01_2025-12-01/ETHUSDT-15m-2025-06.zip'
     for crypto in crypto_list:
         # crypto = "BNBUSDT"
         # crypto_metric[crypto] = {}
-        df_price = load_daily_data(file_dir=file_dir, start_date=start_date, end_date=end_date, interval="15m", crypto=crypto)
+        df_price = load_daily_data(file_dir=None, start_date=start_date, end_date=end_date, interval="15m", crypto=crypto)
         strategy = MAStrategyAnalyzer(
             df_price, 
             short_window=5, 
             long_window=20,
             crypto=crypto,
-            commission_rate=0.0001  # 手续费率：0.01%
+            commission_rate=0.0005  # 手续费率：0.01%
         )
         # 如需保存图表，取消下面一行的注释并指定路径
         other_metrics = strategy.run_strategy(save_plot_path=f"{save_path}/strategy_results_with_commission_{crypto}.png")
