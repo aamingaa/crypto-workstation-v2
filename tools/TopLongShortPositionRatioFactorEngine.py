@@ -2,6 +2,18 @@ import polars as pl
 import numpy as np
 import pandas as pd  # 仅用于生成模拟数据展示，核心逻辑全用 Polars
 
+# 大户的多头和空头总持仓量占比，大户指保证金余额排名前20%的用户。 
+# 多仓持仓量比例 = 大户多仓持仓量 / 大户总持仓量 
+# 空仓持仓量比例 = 大户空仓持仓量 / 大户总持仓量 
+# 多空持仓量比值 = 多仓持仓量比例 / 空仓持仓量比例
+
+# { 
+#          "symbol":"BTCUSDT",
+# 	      "longShortRatio":"1.4342",// 大户多空持仓量比值
+# 	      "longAccount": "0.5344", // 大户多仓持仓量比例
+# 	      "shortAccount":"0.4238", // 大户空仓持仓量比例
+# 	      "timestamp":"1583139600000"
+# }
 class TopLongShortPositionRatioFactorEngine:
     def __init__(self, kline_df: pl.DataFrame, resample_freq='15m'):
         """
@@ -108,7 +120,7 @@ class TopLongShortPositionRatioFactorEngine:
 
     def _build_stat_features(self, lf: pl.LazyFrame, window_size):
         """
-        计算 Z-Score 以衡量“拥挤度”和“极端情绪”
+        计算 Z-Score 以衡量"拥挤度"和"极端情绪"
         """
         # 辅助函数：计算 Z-Score
         def z_score(col_name, w):
@@ -121,102 +133,73 @@ class TopLongShortPositionRatioFactorEngine:
             z_score("whale_net_pos", window_size),   # 头寸的极端程度
             z_score("longShortRatio", window_size)   # 比率的极端程度
         ])
+    
+    def _safe_normalize(self, col_expr, window, min_range=1e-6):
+        """
+        安全的归一化方法，处理边界情况
+        
+        :param col_expr: Polars 列表达式
+        :param window: 滚动窗口大小
+        :param min_range: 最小有效范围，低于此值视为无变化
+        :return: 归一化后的表达式 (0~1)
+        """
+        min_val = col_expr.rolling_min(window)
+        max_val = col_expr.rolling_max(window)
+        range_val = max_val - min_val
+        
+        # 当范围过小时（价格/持仓无变化），返回中性值 0.5
+        # 避免除零和数值不稳定
+        return pl.when(range_val > min_range).then(
+            (col_expr - min_val) / range_val
+        ).otherwise(0.5)
 
-    def _mining_divergence(self, lf: pl.LazyFrame, windows):
+    def _mining_divergence(self, lf: pl.LazyFrame, windows, 
+                          price_low_thresh=0.2, 
+                          whale_high_thresh=0.8,
+                          price_high_thresh=0.8,
+                          whale_low_thresh=0.2):
         """
         【核心逻辑】计算价格与大户持仓的背离
         方法论：归一化后的 Price - 归一化后的 Whale_Pos
+        
+        :param windows: 滚动窗口列表
+        :param price_low_thresh: 价格低位阈值 (默认 0.2，即 20分位)
+        :param whale_high_thresh: 大户高位阈值 (默认 0.8，即 80分位)
+        :param price_high_thresh: 价格高位阈值 (默认 0.8，用于出货信号)
+        :param whale_low_thresh: 大户低位阈值 (默认 0.2，用于出货信号)
         """
         exprs = []
         
         for w in windows:
-            # 1. 价格的局部位置 (0~1)
-            # (Close - Min) / (Max - Min)
-            price_norm = (
-                (pl.col("close") - pl.col("close").rolling_min(w)) / 
-                (pl.col("close").rolling_max(w) - pl.col("close").rolling_min(w) + 1e-9)
-            )
+            # 1. 价格的局部位置 (0~1) - 使用安全归一化
+            price_norm = self._safe_normalize(pl.col("close"), w)
             
-            # 2. 大户持仓的局部位置 (0~1)
-            whale_norm = (
-                (pl.col("whale_net_pos") - pl.col("whale_net_pos").rolling_min(w)) / 
-                (pl.col("whale_net_pos").rolling_max(w) - pl.col("whale_net_pos").rolling_min(w) + 1e-9)
-            )
+            # 2. 大户持仓的局部位置 (0~1) - 使用安全归一化
+            whale_norm = self._safe_normalize(pl.col("whale_net_pos"), w)
             
             # 3. 背离因子 (Divergence)
-            # 值 > 0.5 (正极大): 价格在高位，大户在低位 => 顶背离 (诱多/出货) -> 看空
-            # 值 < -0.5 (负极大): 价格在低位，大户在高位 => 底背离 (吸筹/接盘) -> 看多
+            # 值 > 0 (正): 价格高于大户持仓 => 可能顶背离 (诱多/出货) -> 看空倾向
+            # 值 < 0 (负): 价格低于大户持仓 => 可能底背离 (吸筹/接盘) -> 看多倾向
+            # 值的绝对值越大，背离程度越强
             div_name = f"feat_div_price_whale_w{w}"
             exprs.append((price_norm - whale_norm).alias(div_name))
             
-            # 4. 衍生逻辑：吸筹信号 (Accumulation Signal)
-            # 定义：价格低位 (Price < 0.2) 且 大户高位 (Whale > 0.8)
-            signal_name = f"sig_accumulation_w{w}"
+            # 4. 吸筹信号 (Accumulation Signal)
+            # 定义：价格低位 & 大户高位 => 大户在底部建仓
+            signal_accumulation = f"sig_accumulation_w{w}"
             exprs.append(
-                ((price_norm < 0.2) & (whale_norm > 0.8)).cast(pl.Int8).alias(signal_name)
+                ((price_norm < price_low_thresh) & (whale_norm > whale_high_thresh))
+                .cast(pl.Int8)
+                .alias(signal_accumulation)
+            )
+            
+            # 5. 出货信号 (Distribution Signal)
+            # 定义：价格高位 & 大户低位 => 大户在顶部减仓
+            signal_distribution = f"sig_distribution_w{w}"
+            exprs.append(
+                ((price_norm > price_high_thresh) & (whale_norm < whale_low_thresh))
+                .cast(pl.Int8)
+                .alias(signal_distribution)
             )
 
         return lf.with_columns(exprs)
-
-# ==========================================
-# 模拟运行与测试 (Simulation)
-# ==========================================
-if __name__ == "__main__":
-    # 1. 生成模拟 K线数据 (价格走势)
-    print("生成 K 线上下文...")
-    dates = pd.date_range('2025-01-01', periods=1000, freq='15min')
-    # 模拟一个先跌后涨的行情，用于测试底背离
-    price_trend = np.concatenate([
-        np.linspace(100, 80, 500), # 下跌
-        np.linspace(80, 120, 500)  # 上涨
-    ]) + np.random.normal(0, 1, 1000)
-    
-    kline_df = pl.DataFrame({
-        "open_time": dates,
-        "close": price_trend
-    })
-
-    # 2. 生成模拟大户数据 (带噪音和重复)
-    print("生成大户持仓数据 (包含重复项和背离逻辑)...")
-    # 在价格下跌时(前500)，让大户持仓悄悄上升 (模拟吸筹背离)
-    whale_pos = np.concatenate([
-        np.linspace(0.4, 0.7, 500), # 价格跌，但我买
-        np.linspace(0.7, 0.5, 500)  # 价格涨，我出货
-    ]) + np.random.normal(0, 0.05, 1000)
-    
-    # 构造原始 DataFrame 结构
-    raw_whale_pd = pd.DataFrame({
-        "open_time": dates, # 简单起见一一对应，实际会有缺失
-        "symbol": "BTCUSDT",
-        "longShortRatio": whale_pos / (1 - whale_pos), # 倒推 Ratio
-        "longAccount": whale_pos,
-        "shortAccount": 1 - whale_pos
-    })
-    
-    # 人为制造重复数据 (模拟你的截图情况)
-    raw_whale_pd = pd.concat([raw_whale_pd, raw_whale_pd.iloc[100:200]]).sample(frac=1).reset_index(drop=True)
-    # 转换时间为字符串以模拟原始 CSV 格式
-    raw_whale_pd['open_time'] = raw_whale_pd['open_time'].astype(str)
-    
-    # 转为 Polars
-    whale_pl = pl.from_pandas(raw_whale_pd)
-
-    # 3. 运行引擎
-    engine = TopLongShortPositionRatioFactorEngine(kline_df, resample_freq='15m')
-    df_result = engine.process(whale_pl, windows=[96], z_window=200)
-
-    # 4. 结果验证
-    print("\n[因子预览]")
-    # 选取特定时间段查看背离情况 (下跌末期)
-    cols = ['open_time', 'close', 'whale_net_pos', 'feat_div_price_whale_w96', 'sig_accumulation_w96']
-    preview = df_result.filter(
-        (pl.col("open_time").dt.hour() == 12)  # 随便抽样
-    ).select(cols).sort("open_time")
-    
-    print(preview.tail(10))
-    
-    # 解释输出
-    print("\n[解读]")
-    print("注意观察 'feat_div_price_whale_w96'：")
-    print("如果数值接近 -1.0，说明 价格(Close)在滚动窗口的低位，而大户持仓(Whale)在高位 -> 底背离(吸筹)。")
-    print("如果数值接近 +1.0，说明 价格(Close)在滚动窗口的高位，而大户持仓(Whale)在低位 -> 顶背离(出货)。")
