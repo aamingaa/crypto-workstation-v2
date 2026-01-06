@@ -15,24 +15,17 @@ import pandas as pd
 #     "shortAccount": "0.2647"              // 大户空仓持仓量比例
 # }
 class TopLongShortPositionRatioFactorEngine:
-    def __init__(self, kline_df: pd.DataFrame, resample_freq='15m'):
+    
+    def __init__(self, resample_freq='15m'):
         """
         聪明钱(Smart Money)因子挖掘引擎
         
-        :param kline_df: K线数据 (必须包含 'open_time', 'close')，用于与大户持仓数据对齐并计算价格背离
         :param resample_freq: 数据重采样频率 (默认15分钟)
         
         注意：
-        - kline_df: K线数据，包含 ['open_time', 'close'] 等列
         - raw_whale_data (在process方法中传入): 大户持仓数据，包含 ['open_time', 'symbol', 'longAccount', 'longShortRatio', 'shortAccount']
         """
         self.freq = resample_freq
-        
-        # 预处理 K线数据：确保有序、类型正确
-        self.kline_context = kline_df.copy()
-        self.kline_context['open_time'] = pd.to_datetime(self.kline_context['open_time'])
-        self.kline_context['close'] = self.kline_context['close'].astype(float)
-        self.kline_context = self.kline_context[['open_time', 'close']].sort_values('open_time')
 
     def process(self, raw_whale_data: pd.DataFrame, 
                 windows=[24, 96],  # 滚动窗口 (如 24*15m=6h, 96*15m=24h)
@@ -41,27 +34,23 @@ class TopLongShortPositionRatioFactorEngine:
         print(f"[*] 启动聪明钱引擎 | 频率: {self.freq}")
         
         # 1. 数据清洗与标准化 (Data Cleaning)
-        # 解决截图中的重复数据问题，并转换数值类型
+        # 解决重复数据问题，并转换数值类型
         df = self._clean_and_normalize(raw_whale_data)
         
-        # 2. 上下文对齐 (Context Alignment)
-        # 将大户数据与价格数据对齐，才能计算"背离"
-        df = self._align_with_price(df)
-        
-        # 3. 基础特征构建 (Base Features)
+        # 2. 基础特征构建 (Base Features)
         # 转换 Ratio 为 Net Position，计算一阶差分
         print("[-] 构建基础大户头寸特征...")
         df = self._build_base_features(df)
         
-        # 4. 统计与时序特征 (Statistical & Temporal)
+        # 3. 统计与时序特征 (Statistical & Temporal)
         # 计算 Z-Score (拥挤度) 和 ROC (变化率)
         print(f"[-] 计算统计特征 (Z-Window={z_window})...")
         df = self._build_stat_features(df, z_window)
         
-        # 5. 猎人与猎物背离特征 (Hunter-Prey Divergence)
-        # 核心逻辑：计算 Price Rank - Whale Rank
-        print(f"[-] 挖掘核心背离因子 (Windows={windows})...")
-        df = self._mining_divergence(df, windows)
+        # 4. 持仓极值特征 (Position Extremes)
+        # 核心逻辑：基于大户持仓的局部极值识别潜在信号
+        print(f"[-] 挖掘大户持仓极值因子 (Windows={windows})...")
+        df = self._build_position_signals(df, windows)
         
         print(f"[+] 处理完成. 最终数据形状: {df.shape}")
         return df
@@ -83,7 +72,7 @@ class TopLongShortPositionRatioFactorEngine:
         df = df.drop_duplicates(subset=["open_time", "symbol"], keep="last")
         
         # 4. 排序
-        df = df.sort_values("open_time")
+        df = df.sort_values("open_time", ascending=True)
         
         # 5. 按频率重采样 (防止数据过于密集或稀疏)
         df = df.set_index('open_time')
@@ -95,17 +84,6 @@ class TopLongShortPositionRatioFactorEngine:
         df = df.reset_index()
         
         return df
-
-    def _align_with_price(self, df: pd.DataFrame):
-        """
-        使用 merge_asof 毫秒级对齐 K 线收盘价
-        """
-        return pd.merge_asof(
-            df.sort_values('open_time'),
-            self.kline_context.sort_values('open_time'),
-            on='open_time',
-            direction='backward'
-        )
 
     def _build_base_features(self, df: pd.DataFrame):
         """
@@ -165,49 +143,43 @@ class TopLongShortPositionRatioFactorEngine:
         
         return pd.Series(normalized, index=series.index)
 
-    def _mining_divergence(self, df: pd.DataFrame, windows, 
-                          price_low_thresh=0.2, 
-                          whale_high_thresh=0.8,
-                          price_high_thresh=0.8,
-                          whale_low_thresh=0.2):
+    def _build_position_signals(self, df: pd.DataFrame, windows, 
+                               high_thresh=0.8, 
+                               low_thresh=0.2):
         """
-        【核心逻辑】计算价格与大户持仓的背离
-        方法论：归一化后的 Price - 归一化后的 Whale_Pos
+        【核心逻辑】基于大户持仓的局部极值识别信号
+        方法论：归一化大户持仓，识别高位和低位
         
         :param windows: 滚动窗口列表
-        :param price_low_thresh: 价格低位阈值 (默认 0.2，即 20分位)
-        :param whale_high_thresh: 大户高位阈值 (默认 0.8，即 80分位)
-        :param price_high_thresh: 价格高位阈值 (默认 0.8，用于出货信号)
-        :param whale_low_thresh: 大户低位阈值 (默认 0.2，用于出货信号)
+        :param high_thresh: 高位阈值 (默认 0.8，即 80分位)
+        :param low_thresh: 低位阈值 (默认 0.2，即 20分位)
         """
         df = df.copy()
         
         for w in windows:
-            # 1. 价格的局部位置 (0~1) - 使用安全归一化
-            price_norm = self._safe_normalize(df['close'], w)
-            
-            # 2. 大户持仓的局部位置 (0~1) - 使用安全归一化
+            # 1. 大户净头寸的局部位置 (0~1) - 使用安全归一化
             whale_norm = self._safe_normalize(df['whale_net_pos'], w)
             
-            # 3. 背离因子 (Divergence)
-            # 值 > 0 (正): 价格高于大户持仓 => 可能顶背离 (诱多/出货) -> 看空倾向
-            # 值 < 0 (负): 价格低于大户持仓 => 可能底背离 (吸筹/接盘) -> 看多倾向
-            # 值的绝对值越大，背离程度越强
-            div_name = f"feat_div_price_whale_w{w}"
-            df[div_name] = price_norm - whale_norm
+            # 2. 大户多空比的局部位置 (0~1) - 使用安全归一化
+            ratio_norm = self._safe_normalize(df['longShortRatio'], w)
             
-            # 4. 吸筹信号 (Accumulation Signal)
-            # 定义：价格低位 & 大户高位 => 大户在底部建仓
-            signal_accumulation = f"sig_accumulation_w{w}"
-            df[signal_accumulation] = (
-                (price_norm < price_low_thresh) & (whale_norm > whale_high_thresh)
-            ).astype(np.int8)
+            # 3. 归一化后的净头寸 (可直接用作因子)
+            df[f'feat_whale_pos_norm_w{w}'] = whale_norm
             
-            # 5. 出货信号 (Distribution Signal)
-            # 定义：价格高位 & 大户低位 => 大户在顶部减仓
-            signal_distribution = f"sig_distribution_w{w}"
-            df[signal_distribution] = (
-                (price_norm > price_high_thresh) & (whale_norm < whale_low_thresh)
-            ).astype(np.int8)
+            # 4. 归一化后的多空比 (可直接用作因子)
+            df[f'feat_ratio_norm_w{w}'] = ratio_norm
+            
+            # 5. 做多情绪极端信号 (Bullish Extreme)
+            # 定义：大户净头寸在高位 => 大户集体看多
+            df[f'sig_bullish_extreme_w{w}'] = (whale_norm > high_thresh).astype(np.int8)
+            
+            # 6. 做空情绪极端信号 (Bearish Extreme)
+            # 定义：大户净头寸在低位 => 大户集体看空
+            df[f'sig_bearish_extreme_w{w}'] = (whale_norm < low_thresh).astype(np.int8)
+            
+            # 7. 多空比极端信号 (Ratio Extreme)
+            # 定义：多空比在高位 => 多头持仓极度拥挤
+            df[f'sig_ratio_high_w{w}'] = (ratio_norm > high_thresh).astype(np.int8)
+            df[f'sig_ratio_low_w{w}'] = (ratio_norm < low_thresh).astype(np.int8)
 
         return df
