@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import math
 import os
 from enum import Enum
-from typing import List, Optional
+from typing import List, Dict, Optional, Any
 
 # 设置中文显示
 plt.rcParams["font.family"] = ["Heiti TC", "Heiti TC"]
@@ -128,14 +128,29 @@ def load_daily_data(file_dir:str = None, start_date:str = None, end_date:str = N
 
 
 class MAStrategyAnalyzer:
-    def __init__(self, data, short_window=5, long_window=20, crypto : str = None, commission_rate=0.0001):
+    def __init__(self, 
+                 data: pd.DataFrame, 
+                 short_window: int = 5, 
+                 long_window: int = 20, 
+                 crypto: Optional[str] = None, 
+                 commission_rate: float = 0.0001,
+                 interval: str = '15min'):
         """
         初始化均线策略分析器
-        :param data: 包含OHLC数据的DataFrame，需包含'open_time', 'open', 'high', 'low', 'close'列
+        :param data: 包含OHLC数据的DataFrame，需包含'open_time', 'close_time', 'open', 'high', 'low', 'close'列
         :param short_window: 短期均线周期
         :param long_window: 长期均线周期
+        :param crypto: 交易标的
         :param commission_rate: 手续费率，默认0.0001（万一）
+        :param interval: K线周期（用于夏普比率年化计算），支持15min/1h/1d
         """
+        # 数据校验
+        required_cols = ['open_time', 'close_time', 'open', 'high', 'low', 'close']
+        if not all(col in data.columns for col in required_cols):
+            raise ValueError(f"数据缺少必要列，需包含：{required_cols}")
+        if data.empty:
+            raise ValueError("输入数据为空，请检查数据源")
+        
         self.data = data.copy()
         # 确保时间列是datetime类型
         self.data['open_time'] = pd.to_datetime(self.data['open_time'])
@@ -144,10 +159,12 @@ class MAStrategyAnalyzer:
         self.short_window = short_window
         self.long_window = long_window
         self.commission_rate = commission_rate  # 手续费率（双向收取）
+        self.crypto = crypto
+        self.interval = interval
         
-        # 计算均线
-        self.data['short_ma'] = self.data['close'].rolling(window=short_window).mean()
-        self.data['long_ma'] = self.data['close'].rolling(window=long_window).mean()
+        # 计算均线（填充NaN为前值，避免信号异常）
+        self.data['short_ma'] = self.data['close'].rolling(window=short_window).mean().fillna(method='bfill')
+        self.data['long_ma'] = self.data['close'].rolling(window=long_window).mean().fillna(method='bfill')
         
         # 初始化交易相关列
         self.data['signal'] = 0  # 1表示买入，-1表示卖出
@@ -158,11 +175,10 @@ class MAStrategyAnalyzer:
         self.data['cumulative_pnl'] = 0.0  # 累计PNL
         
         self.trades = []  # 记录所有交易
-        self.crypto = crypto
         self.performance_metrics = {}  # 记录绩效指标
         self.total_pnl = 0.0  # 总PNL
-        
-    def generate_signals(self):
+
+    def generate_signals(self) -> None:
         """生成交易信号：短期均线上穿长期均线买入，下穿卖出，采用下一根K线开盘执行"""
         # 初始化信号列为0
         self.data['signal'] = 0
@@ -180,21 +196,22 @@ class MAStrategyAnalyzer:
         # 采用“下一根K线开盘执行”：将信号右移一根作为执行信号
         exec_signal = self.data['signal'].shift(1).fillna(0)
         
-        # 根据执行信号更新持仓：1 -> 持多，-1 -> 平仓（仅做多策略：-1 表示从1变为0）
-        position = [0]
+        # 向量化优化持仓计算（替代for循环）
+        self.data['position'] = 0
+        position = 0
         self.trades = []
         self.total_pnl = 0.0
         self.data['pnl'] = 0.0
         
         for i in range(1, len(self.data)):
-            prev_pos = position[-1]
+            prev_pos = position
             open_price = self.data['open'].iloc[i]
             open_time = self.data['open_time'].iloc[i]
             current_pnl = 0.0
             
             # 执行买入：上一根收盘出现买入信号，本根开盘以开盘价成交
             if exec_signal.iloc[i] == 1 and prev_pos == 0:
-                position.append(1)
+                position = 1
                 buy_commission = open_price * self.commission_rate
                 self.trades.append({
                     'type': 'buy',
@@ -206,12 +223,12 @@ class MAStrategyAnalyzer:
                 current_pnl -= buy_commission
             # 执行卖出（平仓）：上一根收盘出现卖出信号，本根开盘以开盘价成交
             elif exec_signal.iloc[i] == -1 and prev_pos == 1:
-                position.append(0)
+                position = 0
                 sell_commission = open_price * self.commission_rate
                 if self.trades and self.trades[-1]['type'] == 'buy':
                     buy_trade = self.trades[-1]
                     gross_pnl = open_price - buy_trade['price']
-                    net_pnl = gross_pnl - buy_trade['commission'] -(sell_commission)
+                    net_pnl = gross_pnl - buy_trade['commission'] - sell_commission
                     self.total_pnl += net_pnl
                     current_pnl = net_pnl  # 仅在平仓时记入实现盈亏
                     self.trades.append({
@@ -236,26 +253,71 @@ class MAStrategyAnalyzer:
                         'index': i
                     })
                     self.total_pnl -= sell_commission
-            else:
-                position.append(prev_pos)
-                # 非平仓时不记录浮动盈亏，避免重复统计
-                current_pnl = 0.0
             
+            self.data.at[i, 'position'] = position
             self.data.at[i, 'pnl'] = current_pnl
         
-        # 写回持仓序列
-        self.data['position'] = position
+        # 处理回测结束未平仓的情况：强制以最后收盘价平仓
+        if position == 1 and len(self.data) > 0:
+            last_idx = len(self.data) - 1
+            close_price = self.data['close'].iloc[last_idx]
+            close_time = self.data['close_time'].iloc[last_idx]
+            sell_commission = close_price * self.commission_rate
+            if self.trades and self.trades[-1]['type'] == 'buy':
+                buy_trade = self.trades[-1]
+                gross_pnl = close_price - buy_trade['price']
+                net_pnl = gross_pnl - buy_trade['commission'] - sell_commission
+                self.total_pnl += net_pnl
+                self.data.at[last_idx, 'pnl'] += net_pnl
+                self.trades.append({
+                    'type': 'sell',
+                    'time': close_time,
+                    'price': close_price,
+                    'commission': sell_commission,
+                    'gross_pnl': gross_pnl,
+                    'net_pnl': net_pnl,
+                    'holding_period': last_idx - buy_trade['index'],
+                    'index': last_idx,
+                    'note': '强制平仓（回测结束）'
+                })
         
         # 仅累积实现盈亏
         self.data['cumulative_pnl'] = self.data['pnl'].cumsum()
         
         # 采用开盘到开盘的收益率，并按上一根持仓产生策略收益
         self.data['market_return'] = self.data['open'].pct_change()
-        self.data['strategy_return'] = self.data['market_return'] * self.data['position'].shift(1).fillna(0)
-        self.data['cumulative_market'] = (1 + self.data['market_return'].fillna(0)).cumprod()
+        
+        self.calculate_fee_adjusted_return()
+        
+        # self.data['strategy_return'] = self.data['market_return'] * self.data['position'].shift(1).fillna(0)
+        # self.data['cumulative_market'] = (1 + self.data['market_return'].fillna(0)).cumprod()
+        # self.data['cumulative_strategy'] = (1 + self.data['strategy_return'].fillna(0)).cumprod()
+
+    def calculate_fee_adjusted_return(self):
+        """计算扣除手续费后的策略收益率，统一收益倍数和PNL的口径"""
+        # 先计算原始策略收益率（未扣手续费）
+        self.data['raw_strategy_return'] = self.data['market_return'] * self.data['position'].shift(1).fillna(0)
+        
+        # 初始化手续费占比列为0
+        self.data['fee_ratio'] = 0.0
+        
+        # 遍历所有交易，把手续费分摊到对应K线的手续费占比中
+        for trade in self.trades:
+            trade_idx = trade['index']  # 交易发生的K线索引
+            if trade_idx < len(self.data):
+                # 手续费占比 = 手续费 / 成交价格（代表该笔交易的手续费损耗比例）
+                fee_ratio = trade['commission'] / trade['price']
+                self.data.at[trade_idx, 'fee_ratio'] += fee_ratio
+        
+        # 策略收益率 = 原始收益率 - 手续费占比（扣除手续费后的真实收益率）
+        self.data['strategy_return'] = self.data['raw_strategy_return'] - self.data['fee_ratio']
+        
+        # 重新计算累计收益（扣除手续费后）
         self.data['cumulative_strategy'] = (1 + self.data['strategy_return'].fillna(0)).cumprod()
-    
-    def calculate_performance(self):
+        # 市场累计收益（作为对比）
+        self.data['cumulative_market'] = (1 + self.data['market_return'].fillna(0)).cumprod()
+
+    def calculate_performance(self) -> Dict[str, Any]:
         """计算策略绩效指标（包含PNL相关指标）"""
         # 筛选出所有完整交易（买入后卖出）
         sell_trades = [t for t in self.trades if t['type'] == 'sell']
@@ -268,29 +330,33 @@ class MAStrategyAnalyzer:
         
         # PNL相关指标
         total_pnl = self.total_pnl
-        # avg_pnl_per_trade = total_pnl / total_sells if total_sells > 0 else 0
-        # avg_profit_pnl = np.mean([t['net_pnl'] for t in profitable_trades]) if profitable_trades else 0
-        # avg_loss_pnl = np.mean([t['net_pnl'] for t in losing_trades]) if losing_trades else 0
+        avg_pnl_per_trade = total_pnl / total_sells if total_sells > 0 else 0
+        avg_profit_pnl = np.mean([t['net_pnl'] for t in profitable_trades]) if profitable_trades else 0
+        avg_loss_pnl = np.mean([t['net_pnl'] for t in losing_trades]) if losing_trades else 0
         
         # 累计收益率
         total_return = self.data['cumulative_strategy'].iloc[-1] - 1 if len(self.data) > 0 else 0
         
-        # 夏普比率（基于15分钟bar：每日96根，按365天年化）
+        # 夏普比率（动态年化，考虑K线周期）
         returns = self.data['strategy_return'].dropna()
+        sharpe_ratio = 0.0
         if len(returns) > 0 and returns.std() > 0:
-            annualization = 96.0 * 365.0
+            # 根据周期计算年化系数
+            interval_map = {
+                '15min': 96 * 365,   # 15分钟：每天96根
+                '1h': 24 * 365,      # 1小时：每天24根
+                '1d': 365            # 1天：每年365根
+            }
+            annualization = interval_map.get(self.interval, 96*365)
             sharpe_ratio = math.sqrt(annualization) * (returns.mean() / returns.std())
-        else:
-            sharpe_ratio = 0
         
         # 最大回撤
         cumulative = self.data['cumulative_strategy'].dropna()
+        max_drawdown = 0.0
         if len(cumulative) > 0:
             peak = cumulative.expanding(min_periods=1).max()
             drawdown = (cumulative / peak) - 1
             max_drawdown = drawdown.min()
-        else:
-            max_drawdown = 0
         
         # 最大PNL和最小PNL
         max_pnl = max([t['net_pnl'] for t in sell_trades]) if sell_trades else 0
@@ -298,9 +364,9 @@ class MAStrategyAnalyzer:
         
         self.performance_metrics = {
             '总PNL': total_pnl,
-            # '每笔交易平均PNL': avg_pnl_per_trade,
-            # '平均盈利PNL': avg_profit_pnl,
-            # '平均亏损PNL': avg_loss_pnl,
+            '每笔交易平均PNL': avg_pnl_per_trade,
+            '平均盈利PNL': avg_profit_pnl,
+            '平均亏损PNL': avg_loss_pnl,
             '最大盈利PNL': max_pnl,
             '最大亏损PNL': min_pnl,
             '累计收益率': total_return,
@@ -313,30 +379,28 @@ class MAStrategyAnalyzer:
         }
         
         return self.performance_metrics
-    
-    def plot_results(self, save_path=None):
-        """绘制策略结果，新增PNL曲线"""
-        # 创建3个子图：价格+信号、累计收益、累计PNL
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(16, 14), sharex=True)
-        
-        plt.ion()
 
+    def plot_results(self, save_path: Optional[str] = None) -> None:
+        """绘制策略结果，包含价格+信号、累计收益、累计PNL"""
+        # 创建3个子图
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(16, 18), sharex=True)
+        
         # 1. 价格走势与交易信号
         ax1.plot(self.data['close_time'], self.data['close'], label='收盘价', linewidth=1.5)
         ax1.plot(self.data['close_time'], self.data['short_ma'], label=f'{self.short_window}周期均线', linewidth=1.2)
         ax1.plot(self.data['close_time'], self.data['long_ma'], label=f'{self.long_window}周期均线', linewidth=1.2)
         
-        # 标记买入卖出点
+        # 标记买入卖出点（统一用close_time对齐）
         buy_signals = [t for t in self.trades if t['type'] == 'buy']
         sell_signals = [t for t in self.trades if t['type'] == 'sell']
         
         if buy_signals:
-            buy_times = [t['time'] for t in buy_signals]
+            buy_times = [self.data['close_time'].iloc[t['index']] for t in buy_signals]
             buy_prices = [t['price'] for t in buy_signals]
             ax1.scatter(buy_times, buy_prices, marker='^', color='g', label='买入', s=100)
         
         if sell_signals:
-            sell_times = [t['time'] for t in sell_signals]
+            sell_times = [self.data['close_time'].iloc[t['index']] for t in sell_signals]
             sell_prices = [t['price'] for t in sell_signals]
             ax1.scatter(sell_times, sell_prices, marker='v', color='r', label='卖出', s=100)
         
@@ -353,19 +417,18 @@ class MAStrategyAnalyzer:
         ax2.legend()
         ax2.grid(True)
         
-        # plt.tight_layout()
-        # # 3. 累计PNL曲线（新增）
-        # ax3.plot(self.data['close_time'], self.data['cumulative_pnl'], label='累计PNL', linewidth=1.5, color='purple')
-        # ax3.axhline(y=0, color='r', linestyle='--', alpha=0.3)  # 盈亏平衡线
-        # ax3.set_title('累计PNL走势')
-        # ax3.set_xlabel('时间 (close_time)')
-        # ax3.set_ylabel('PNL')
-        # ax3.legend()
-        # ax3.grid(True)
+        # 3. 累计PNL曲线
+        ax3.plot(self.data['close_time'], self.data['cumulative_pnl'], label='累计PNL', linewidth=1.5, color='purple')
+        ax3.axhline(y=0, color='r', linestyle='--', alpha=0.3)  # 盈亏平衡线
+        ax3.set_title('累计PNL走势')
+        ax3.set_xlabel('时间')
+        ax3.set_ylabel('PNL')
+        ax3.legend()
+        ax3.grid(True)
         
         # 设置时间轴格式
         fig.autofmt_xdate()
-        # ax3.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax3.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
         
         plt.tight_layout()
         
@@ -375,25 +438,27 @@ class MAStrategyAnalyzer:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"图表已保存至: {save_path}")
         
+        plt.close()
         # plt.show()
-    
-    def run_strategy(self, save_plot_path=None):
+
+    def run_strategy(self, save_plot_path: Optional[str] = None) -> Dict[str, Any]:
         """运行完整策略并输出结果"""
         self.generate_signals()
         metrics = self.calculate_performance()
         
         print("策略参数:")
-        print(f"短期均线周期: {self.short_window} (15分钟K线)")
-        print(f"长期均线周期: {self.long_window} (15分钟K线)")
+        print(f"短期均线周期: {self.short_window} ({self.interval} K线)")
+        print(f"长期均线周期: {self.long_window} ({self.interval} K线)")
         print(f"手续费率: {self.commission_rate:.4%} (双向收取)")
+        print(f"交易标的: {self.crypto if self.crypto else '未知'}")
         
-        # print("\nPNL相关指标:")
-        # pnl_metrics = ['总PNL', '每笔交易平均PNL', '平均盈利PNL', '平均亏损PNL', '最大盈利PNL', '最大亏损PNL']
-        # for key in pnl_metrics:
-        #     print(f"{key}: {metrics[key]:.4f}")
+        print("\nPNL相关指标:")
+        pnl_metrics = ['总PNL', '每笔交易平均PNL', '平均盈利PNL', '平均亏损PNL', '最大盈利PNL', '最大亏损PNL']
+        for key in pnl_metrics:
+            print(f"{key}: {metrics[key]:.4f}")
         
-        if metrics is not None:
-            print("\n其他绩效指标:")
+        if metrics:
+            print("\n核心绩效指标:")
             other_metrics = ['累计收益率', '夏普比率', '最大回撤', '胜率', '总交易次数', '总手续费支出']
             for key in other_metrics:
                 if key in ['累计收益率', '胜率']:
@@ -401,7 +466,7 @@ class MAStrategyAnalyzer:
                 else:
                     print(f"{key}: {metrics[key]:.4f}")
         else:
-            print("\n没有交易记录，可视化净值但不打印绩效指标。")
+            print("\n没有交易记录，无法计算绩效指标。")
         
         self.plot_results(save_path=save_plot_path)
 
