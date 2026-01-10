@@ -4,8 +4,8 @@
 """
 import pandas as pd
 import numpy as np
-from originalFeature import BaseFeature
-import dataload
+from .originalFeature import BaseFeature
+from . import dataload
 
 def diagnose_feature_quality(df, feature_names, window=100, n_segments=5):
     """

@@ -1,9 +1,9 @@
 import time
 import numpy as np
 import pandas as pd
-from genetic import SymbolicTransformer
-from functions import _function_map
-import dataload
+from .genetic import SymbolicTransformer
+from .functions import _function_map
+from . import dataload
 from datetime import datetime
 from pathlib import Path
 import warnings
@@ -16,7 +16,7 @@ import joblib
 import schedule
 import os
 import talib as ta
-import fitness
+from . import fitness
 from datetime import datetime
 from sklearn.linear_model import LinearRegression
 import cloudpickle
@@ -188,22 +188,22 @@ class GPAnalyzer:
                     data_dir=self.data_dir,
                     include_categories = getattr(self, 'include_categories', None),
                     )
-            elif str(self.data_source).lower() == 'factor_visualize':
-                self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc = dataload.data_prepare_factor_visualize(
-                        self.sym, self.freq, self.start_date_train, self.end_date_train,
-                        self.start_date_test, self.end_date_test, 
-                        coarse_grain_period=getattr(self, 'coarse_grain_period', '2h'),
-                        feature_lookback_bars=getattr(self, 'feature_lookback_bars', 8),
-                        rolling_step=getattr(self, 'rolling_step', '10min'),
-                        y_train_ret_period=self.y_train_ret_period,
-                        rolling_w=self.rolling_window, 
-                        output_format='ndarry',
-                        data_dir=self.data_dir, 
-                        read_frequency=self.read_frequency, 
-                        timeframe=self.timeframe,
-                        file_path=self.file_path,
-                        include_categories = getattr(self, 'include_categories', ['momentum'])
-                    )
+            # elif str(self.data_source).lower() == 'factor_visualize':
+            #     self.X_all, self.X_train, self.y_train, self.ret_train, self.X_test, self.y_test, self.ret_test, self.feature_names,self.open_train,self.open_test,self.close_train,self.close_test, self.z_index ,self.ohlc = dataload.data_prepare_factor_visualize(
+            #             self.sym, self.freq, self.start_date_train, self.end_date_train,
+            #             self.start_date_test, self.end_date_test, 
+            #             coarse_grain_period=getattr(self, 'coarse_grain_period', '2h'),
+            #             feature_lookback_bars=getattr(self, 'feature_lookback_bars', 8),
+            #             rolling_step=getattr(self, 'rolling_step', '10min'),
+            #             y_train_ret_period=self.y_train_ret_period,
+            #             rolling_w=self.rolling_window, 
+            #             output_format='ndarry',
+            #             data_dir=self.data_dir, 
+            #             read_frequency=self.read_frequency, 
+            #             timeframe=self.timeframe,
+            #             file_path=self.file_path,
+            #             include_categories = getattr(self, 'include_categories', ['momentum'])
+            #         )
                 
                 
             self.data_initialized = True

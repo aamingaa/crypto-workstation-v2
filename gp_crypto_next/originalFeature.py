@@ -10,7 +10,7 @@ import talib
 from scipy.stats import rankdata
 from functools import singledispatch
 import warnings
-import dataload
+from . import dataload
 import yaml
 from tqdm import tqdm
 from .LiquidationFeature import get_advanced_liquidation_features

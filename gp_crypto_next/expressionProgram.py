@@ -2,8 +2,8 @@
 import numpy as np
 import pandas as pd
 import re
-from functions import _function_map
-import originalFeature
+from .functions import _function_map
+from . import originalFeature
 import multiprocessing
 from functools import partial
 

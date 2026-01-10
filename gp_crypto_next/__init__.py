@@ -4,5 +4,8 @@
 
 """
 # __version__ = '0.5.dev0'
-#
-# __all__ = ['genetic', 'functions', 'fitness']
+
+from . import originalFeature
+from . import dataload
+
+__all__ = ['genetic', 'functions', 'fitness', 'originalFeature', 'dataload']

@@ -5,7 +5,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import originalFeature
+from . import originalFeature
 from scipy.optimize import minimize
 import time
 import talib as ta
@@ -15,7 +15,7 @@ import re
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import originalFeature
+from . import originalFeature
 from scipy.optimize import minimize
 import time
 import talib as ta
@@ -34,8 +34,8 @@ from scipy.stats import tukeylambda, mstats
 from sklearn.preprocessing import RobustScaler
 import zipfile
 from io import BytesIO
-from NormDataCheck import norm, inverse_norm
-from tools.LiquidationFactorEngine import LiquidationFactorEngine
+from .NormDataCheck import norm, inverse_norm
+# from tools.LiquidationFactorEngine import LiquidationFactorEngine
 
 
 
@@ -530,196 +530,196 @@ def resample_with_offset(z: pd.DataFrame, freq: str, offset: pd.Timedelta = None
     
     return z
 
-def data_prepare_factor_visualize(
-        sym: str, 
-        freq: str,  # 预测周期，例如 '2h' 表示预测未来2小时收益
-        start_date_train: str, 
-        end_date_train: str,
-        start_date_test: str, 
-        end_date_test: str,
-        coarse_grain_period: str = '2h',  # 粗粒度特征桶周期
-        feature_lookback_bars: int = 8,    # 特征回溯桶数（8个2h = 16小时）
-        rolling_step: str = '15min',       # 滚动步长
-        y_train_ret_period: int = 8,       # 预测周期（以coarse_grain为单位，1表示1个2h）
-        rolling_w: int = 2000,
-        output_format: str = 'ndarry',
-        data_dir: str = '',
-        read_frequency: str = '',
-        timeframe: str = '',
-        file_path: Optional[str] = None,
-        use_parallel: bool = True,  # 是否使用并行处理
-        n_jobs: int = -1,  # 并行进程数，-1表示使用所有CPU核心
-        use_fine_grain_precompute: bool = True,  # 是否使用细粒度预计算优化
-        include_categories: List[str] = None,
-        remove_warmup_rows: bool = True,  # 是否删除rolling窗口未满的前rolling_w-1行
-        _compute_transformed_series: bool = False,
-        _check_zscore_window_series: bool = False,
-    ):
-    '''
-    内置了一些对于label的分析，比较关键, 但只需要研究和对比时才会开启
+# def data_prepare_factor_visualize(
+#         sym: str, 
+#         freq: str,  # 预测周期，例如 '2h' 表示预测未来2小时收益
+#         start_date_train: str, 
+#         end_date_train: str,
+#         start_date_test: str, 
+#         end_date_test: str,
+#         coarse_grain_period: str = '2h',  # 粗粒度特征桶周期
+#         feature_lookback_bars: int = 8,    # 特征回溯桶数（8个2h = 16小时）
+#         rolling_step: str = '15min',       # 滚动步长
+#         y_train_ret_period: int = 8,       # 预测周期（以coarse_grain为单位，1表示1个2h）
+#         rolling_w: int = 2000,
+#         output_format: str = 'ndarry',
+#         data_dir: str = '',
+#         read_frequency: str = '',
+#         timeframe: str = '',
+#         file_path: Optional[str] = None,
+#         use_parallel: bool = True,  # 是否使用并行处理
+#         n_jobs: int = -1,  # 并行进程数，-1表示使用所有CPU核心
+#         use_fine_grain_precompute: bool = True,  # 是否使用细粒度预计算优化
+#         include_categories: List[str] = None,
+#         remove_warmup_rows: bool = True,  # 是否删除rolling窗口未满的前rolling_w-1行
+#         _compute_transformed_series: bool = False,
+#         _check_zscore_window_series: bool = False,
+#     ):
+#     '''
+#     内置了一些对于label的分析，比较关键, 但只需要研究和对比时才会开启
 
-        # 对于Label的分析的指导目标，是希望它能够接近正态分布，偏度，峰度接近于0
-    # 方案1，先对log_return做clip，完全去除了outlier，再看偏度峰度，决定后续是否rolling_zscore.
-    # 方案2，先对log_return做rolling_zscore,
-    # (rolling窗口值是2000，暂时当做经验性的参数，取值的自由度来源于詹森不等式和大数定理，都是用数据算出来的)
-        # 1. 参数和单点夏普的关系不明确，但是和几万个因子的夏普只和，他们的关系应该存在一定的凸性；
-        # 2. 参数的设置应该在维持1的前提下兼顾大数定理；
-        # 3. samples拆分成为几个class后样本量仍然符合大数定理；
-    # 如上两种方案的对比，当前认为是应该第二种方式，应该是能够保留一部分outlier的信息，相对平衡的减轻outlier的影响
+#         # 对于Label的分析的指导目标，是希望它能够接近正态分布，偏度，峰度接近于0
+#     # 方案1，先对log_return做clip，完全去除了outlier，再看偏度峰度，决定后续是否rolling_zscore.
+#     # 方案2，先对log_return做rolling_zscore,
+#     # (rolling窗口值是2000，暂时当做经验性的参数，取值的自由度来源于詹森不等式和大数定理，都是用数据算出来的)
+#         # 1. 参数和单点夏普的关系不明确，但是和几万个因子的夏普只和，他们的关系应该存在一定的凸性；
+#         # 2. 参数的设置应该在维持1的前提下兼顾大数定理；
+#         # 3. samples拆分成为几个class后样本量仍然符合大数定理；
+#     # 如上两种方案的对比，当前认为是应该第二种方式，应该是能够保留一部分outlier的信息，相对平衡的减轻outlier的影响
 
-    Note - 最终要把窗口还没积累完全的部分，删除掉这些样本，否则会影响训练的结果。往往是都生成了feature之后，最后处理好label，再做切割。
-    '''
+#     Note - 最终要把窗口还没积累完全的部分，删除掉这些样本，否则会影响训练的结果。往往是都生成了feature之后，最后处理好label，再做切割。
+#     '''
 
-    # -----------------------------------------
-    z = data_load_v2(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test,
-                        timeframe=timeframe, file_path=None)
+#     # -----------------------------------------
+#     z = data_load_v2(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test,
+#                         timeframe=timeframe, file_path=None)
 
-    # 切分数据，只取需要的部分 - train and test
-    z.index = pd.to_datetime(z.index)
-    print(f'开始处理 {sym} 的历史数据')   
-    print(f'len of z before select = {len(z)}')
-    z = z[(z.index >= pd.to_datetime(start_date_train)) & (
-        z.index <= pd.to_datetime(end_date_test))]  # 只截取参数指定部分dataframe
-    print(f'len of z after select = {len(z)}')
-    ohlcva_df = resample(z, freq)
+#     # 切分数据，只取需要的部分 - train and test
+#     z.index = pd.to_datetime(z.index)
+#     print(f'开始处理 {sym} 的历史数据')   
+#     print(f'len of z before select = {len(z)}')
+#     z = z[(z.index >= pd.to_datetime(start_date_train)) & (
+#         z.index <= pd.to_datetime(end_date_test))]  # 只截取参数指定部分dataframe
+#     print(f'len of z after select = {len(z)}')
+#     ohlcva_df = resample(z, freq)
 
-    print(f'len of resample_z = {len(ohlcva_df)}')
-    # --------------------------------------------------------
-    if _compute_transformed_series:
-        # 分析label的分布，画出label的各类处理后的 三阶矩，四阶矩
-        compute_transformed_series(z.c)
-    if _check_zscore_window_series:
-        # 画图，展现各种窗口下的label的log_return
-        check_zscore_window_series(z, 'c')
-    # --------------------------------------------------------
-    print('开始生成初始特征')
-    base_feature = originalFeature.BaseFeature(ohlcva_df.copy(), include_categories = include_categories, rolling_zscore_window = rolling_w)
-    z = base_feature.init_feature_df
+#     print(f'len of resample_z = {len(ohlcva_df)}')
+#     # --------------------------------------------------------
+#     if _compute_transformed_series:
+#         # 分析label的分布，画出label的各类处理后的 三阶矩，四阶矩
+#         compute_transformed_series(z.c)
+#     if _check_zscore_window_series:
+#         # 画图，展现各种窗口下的label的log_return
+#         check_zscore_window_series(z, 'c')
+#     # --------------------------------------------------------
+#     print('开始生成初始特征')
+#     base_feature = originalFeature.BaseFeature(ohlcva_df.copy(), include_categories = include_categories, rolling_zscore_window = rolling_w)
+#     z = base_feature.init_feature_df
 
-    # -----------------------------------------
+#     # -----------------------------------------
 
-    # 关键 - 生成ret这一列，这是label数值，整个因子评估体系的基础，要注意分析label分布的skewness, kurtosis等.
-    # note - 需要把空值处理掉，因为测试集中的最后的几个空值可能刚好影响测试的持仓效果.
-    # 注意使用滑动窗口时，对于没填满的区域，和最后空空值区域，也要有类似的考量，防止刚好碰到极值label引起失真影响。
-    print('开始生成ret')
-    z['return_f'] = np.log(z['c']).diff(
-        y_train_ret_period).shift(-y_train_ret_period)
-    z['return_f'] = z['return_f'].fillna(0)
-    z['r'] = np.log(z['c']).diff()
-    z['r'] = z['r'].fillna(0)
-
-
-    # ---方案2， 先对label做rolling_zscore---------------
-    def norm_ret(x, window=rolling_w):  # 不再用L2 norm，恢复到之前的zscore，然后这里需要做的是给他增加一个周期
-
-        # 注意这个函数是用在return上面的，log1p最小的数值是-1，用于return合适
-        x = np.log1p(np.asarray(x))
-        factors_data = pd.DataFrame(x, columns=['factor'])
-        factors_data = factors_data.replace([np.inf, -np.inf, np.nan], 0.0)
-        # factors_mean = factors_data.rolling(
-        #     window=window, min_periods=1).mean()
-        factors_std = factors_data.rolling(window=window, min_periods=1).std()
-        factor_value = factors_data / factors_std
-        factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
-        # factor_value = factor_value.clip(-6, 6)
-        return np.nan_to_num(factor_value).flatten()
+#     # 关键 - 生成ret这一列，这是label数值，整个因子评估体系的基础，要注意分析label分布的skewness, kurtosis等.
+#     # note - 需要把空值处理掉，因为测试集中的最后的几个空值可能刚好影响测试的持仓效果.
+#     # 注意使用滑动窗口时，对于没填满的区域，和最后空空值区域，也要有类似的考量，防止刚好碰到极值label引起失真影响。
+#     print('开始生成ret')
+#     z['return_f'] = np.log(z['c']).diff(
+#         y_train_ret_period).shift(-y_train_ret_period)
+#     z['return_f'] = z['return_f'].fillna(0)
+#     z['r'] = np.log(z['c']).diff()
+#     z['r'] = z['r'].fillna(0)
 
 
-    # Note - 先强行使用norm_ret看效果
-    z['ret_rolling_zscore'] = norm_ret(z['return_f'])
+#     # ---方案2， 先对label做rolling_zscore---------------
+#     def norm_ret(x, window=rolling_w):  # 不再用L2 norm，恢复到之前的zscore，然后这里需要做的是给他增加一个周期
 
-    # 此时，所有的features和label，都用相同窗口做完了rolling处理，为了训练模型的准确性，可以开始删除掉还没有存满窗口的那些行了。去除前window行
-    # 重要！！ 如果执行如下这句，会z与上面的ohlcva_df不一致，导致originalFeature.BaseFeature(ohlcva_df)初始化的ohlcva_df与做eval的feature_data不一致
-    # z = z.iloc[window-1:]
-
-    kept_index = z.index
-    ohlcva_df = ohlcva_df.loc[kept_index]
-    open_train = ohlcva_df['o'][(ohlcva_df['o'].index >= pd.to_datetime(start_date_train)) & (
-            ohlcva_df['o'].index < pd.to_datetime(end_date_train))]
-    open_test = ohlcva_df['o'][(ohlcva_df['o'].index >= pd.to_datetime(start_date_test)) & (
-            ohlcva_df['o'].index <= pd.to_datetime(end_date_test))]
-    close_train = ohlcva_df['c'][(ohlcva_df['c'].index >= pd.to_datetime(start_date_train)) & (
-            ohlcva_df['c'].index < pd.to_datetime(end_date_train))]
-    close_test = ohlcva_df['c'][(ohlcva_df['c'].index >= pd.to_datetime(start_date_test)) & (
-            ohlcva_df['c'].index <= pd.to_datetime(end_date_test))]
-
-    print('ret_rolling_zscore skew = {}'.format(
-        z['ret_rolling_zscore'].skew()))
-    print('ret_rolling_zscore kurtosis = {}'.format(
-        z['ret_rolling_zscore'].kurtosis()))
-
-    print('return skew = {}'.format(z['return_f'].skew()))
-    print('return kurtosis = {}'.format(z['return_f'].kurtosis()))
+#         # 注意这个函数是用在return上面的，log1p最小的数值是-1，用于return合适
+#         x = np.log1p(np.asarray(x))
+#         factors_data = pd.DataFrame(x, columns=['factor'])
+#         factors_data = factors_data.replace([np.inf, -np.inf, np.nan], 0.0)
+#         # factors_mean = factors_data.rolling(
+#         #     window=window, min_periods=1).mean()
+#         factors_std = factors_data.rolling(window=window, min_periods=1).std()
+#         factor_value = factors_data / factors_std
+#         factor_value = factor_value.replace([np.inf, -np.inf, np.nan], 0.0)
+#         # factor_value = factor_value.clip(-6, 6)
+#         return np.nan_to_num(factor_value).flatten()
 
 
-    # 切分为train和test两个数据集，但是注意，test数据集其实带入了之前的数据的窗口, 是要特意这么做的。
-    z_train = z[(z.index >= pd.to_datetime(start_date_train)) & (
-        z.index < pd.to_datetime(end_date_train))]  # 只截取参数指定部分dataframe
-    z_test = z[(z.index >= pd.to_datetime(start_date_test)) & (
-        z.index <= pd.to_datetime(end_date_test))]
-    # ------------<label 分析>-------------------------
+#     # Note - 先强行使用norm_ret看效果
+#     z['ret_rolling_zscore'] = norm_ret(z['return_f'])
 
-    # 对于Label的分析的指导目标，是希望它能够接近正态分布，偏度，峰度接近于0
-    # 方案1，先对log_return做clip，完全去除了outlier，再看偏度峰度，决定后续是否rolling_zscore.
-    # 方案2，先对log_return做rolling_zscore,
-    # (rolling窗口值是2000，暂时当做经验性的参数，取值的自由度来源于詹森不等式和大数定理，都是用数据算出来的)
-    # 1. 参数和单点夏普的关系不明确，但是和几万个因子的夏普只和，他们的关系应该存在一定的凸性；
-    # 2. 参数的设置应该在维持1的前提下兼顾大数定理；
-    # 3. samples拆分成为几个class后样本量仍然符合大数定理；
-    # 如上两种方案的对比，当前认为是应该第二种方式，应该是能够保留一部分outlier的信息，相对平衡的减轻outlier的影响
+#     # 此时，所有的features和label，都用相同窗口做完了rolling处理，为了训练模型的准确性，可以开始删除掉还没有存满窗口的那些行了。去除前window行
+#     # 重要！！ 如果执行如下这句，会z与上面的ohlcva_df不一致，导致originalFeature.BaseFeature(ohlcva_df)初始化的ohlcva_df与做eval的feature_data不一致
+#     # z = z.iloc[window-1:]
+
+#     kept_index = z.index
+#     ohlcva_df = ohlcva_df.loc[kept_index]
+#     open_train = ohlcva_df['o'][(ohlcva_df['o'].index >= pd.to_datetime(start_date_train)) & (
+#             ohlcva_df['o'].index < pd.to_datetime(end_date_train))]
+#     open_test = ohlcva_df['o'][(ohlcva_df['o'].index >= pd.to_datetime(start_date_test)) & (
+#             ohlcva_df['o'].index <= pd.to_datetime(end_date_test))]
+#     close_train = ohlcva_df['c'][(ohlcva_df['c'].index >= pd.to_datetime(start_date_train)) & (
+#             ohlcva_df['c'].index < pd.to_datetime(end_date_train))]
+#     close_test = ohlcva_df['c'][(ohlcva_df['c'].index >= pd.to_datetime(start_date_test)) & (
+#             ohlcva_df['c'].index <= pd.to_datetime(end_date_test))]
+
+#     print('ret_rolling_zscore skew = {}'.format(
+#         z['ret_rolling_zscore'].skew()))
+#     print('ret_rolling_zscore kurtosis = {}'.format(
+#         z['ret_rolling_zscore'].kurtosis()))
+
+#     print('return skew = {}'.format(z['return_f'].skew()))
+#     print('return kurtosis = {}'.format(z['return_f'].kurtosis()))
+
+
+#     # 切分为train和test两个数据集，但是注意，test数据集其实带入了之前的数据的窗口, 是要特意这么做的。
+#     z_train = z[(z.index >= pd.to_datetime(start_date_train)) & (
+#         z.index < pd.to_datetime(end_date_train))]  # 只截取参数指定部分dataframe
+#     z_test = z[(z.index >= pd.to_datetime(start_date_test)) & (
+#         z.index <= pd.to_datetime(end_date_test))]
+#     # ------------<label 分析>-------------------------
+
+#     # 对于Label的分析的指导目标，是希望它能够接近正态分布，偏度，峰度接近于0
+#     # 方案1，先对log_return做clip，完全去除了outlier，再看偏度峰度，决定后续是否rolling_zscore.
+#     # 方案2，先对log_return做rolling_zscore,
+#     # (rolling窗口值是2000，暂时当做经验性的参数，取值的自由度来源于詹森不等式和大数定理，都是用数据算出来的)
+#     # 1. 参数和单点夏普的关系不明确，但是和几万个因子的夏普只和，他们的关系应该存在一定的凸性；
+#     # 2. 参数的设置应该在维持1的前提下兼顾大数定理；
+#     # 3. samples拆分成为几个class后样本量仍然符合大数定理；
+#     # 如上两种方案的对比，当前认为是应该第二种方式，应该是能够保留一部分outlier的信息，相对平衡的减轻outlier的影响
 
 
 
-    if output_format == 'ndarry':
-        y_dataset_train = z_train['ret_rolling_zscore'].values
-        y_dataset_test = z_test['ret_rolling_zscore'].values
-        ret_dataset_train = z_train['return_f'].values
-        ret_dataset_test = z_test['return_f'].values
-        # 重要！要删除掉包含未来信息的字段，ret，ret_rolling_zscore
-        z_train.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
-        z_test.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
-        z.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#     if output_format == 'ndarry':
+#         y_dataset_train = z_train['ret_rolling_zscore'].values
+#         y_dataset_test = z_test['ret_rolling_zscore'].values
+#         ret_dataset_train = z_train['return_f'].values
+#         ret_dataset_test = z_test['return_f'].values
+#         # 重要！要删除掉包含未来信息的字段，ret，ret_rolling_zscore
+#         z_train.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#         z_test.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#         z.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
 
-        X_all = np.where(np.isnan(z), 0, z)
-        X_dataset_train = np.where(np.isnan(z_train), 0, z_train)
-        X_dataset_test = np.where(np.isnan(z_test), 0, z_test)
+#         X_all = np.where(np.isnan(z), 0, z)
+#         X_dataset_train = np.where(np.isnan(z_train), 0, z_train)
+#         X_dataset_test = np.where(np.isnan(z_test), 0, z_test)
 
-    elif output_format == 'dataframe':
-        y_dataset_train = z_train['ret_rolling_zscore']
-        y_dataset_test = z_test['ret_rolling_zscore']
-        ret_dataset_train = z_train['return_f']
-        ret_dataset_test = z_test['return_f']
-        # 重要！要删除掉包含未来信息的字段，ret，ret_rolling_zscore
-        z_train.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
-        z_test.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
-        z.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#     elif output_format == 'dataframe':
+#         y_dataset_train = z_train['ret_rolling_zscore']
+#         y_dataset_test = z_test['ret_rolling_zscore']
+#         ret_dataset_train = z_train['return_f']
+#         ret_dataset_test = z_test['return_f']
+#         # 重要！要删除掉包含未来信息的字段，ret，ret_rolling_zscore
+#         z_train.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#         z_test.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
+#         z.drop(['return_f', 'ret_rolling_zscore'], axis=1, inplace=True)
 
-        X_all = z.fillna(0)
-        X_dataset_train = z_train.fillna(0)
-        X_dataset_test = z_test.fillna(0)
+#         X_all = z.fillna(0)
+#         X_dataset_train = z_train.fillna(0)
+#         X_dataset_test = z_test.fillna(0)
 
-    else:
-        print(
-            'output_format of data_prepare should be "ndarry" or "dataframe", pls check it ')
-        exit(1)
+#     else:
+#         print(
+#             'output_format of data_prepare should be "ndarry" or "dataframe", pls check it ')
+#         exit(1)
 
-    feature_names = z_train.columns
+#     feature_names = z_train.columns
 
-    print('检查x all是不是等于 x train和y trian相加，再检查trian和test以及close和open的形状是否一致')
-    # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
-    print(f'检查X_all的形状 {X_all.shape}')
-    print(f'检查x dataset train的形状 {X_dataset_train.shape}')
-    print(f'检查y dataset train的形状 {y_dataset_train.shape}')
-    print(f'检查x all是不是等于train和test相加 {len(X_all)},{len(X_dataset_test)+len(X_dataset_train)}')
-    print(f'检查open train的形状 {open_train.shape}')
-    print(f'检查close train的形状 {close_train.shape}')
-    print(f'检查x dataset test的形状 {X_dataset_test.shape}')
-    print(f'检查y dataset test的形状 {y_dataset_test.shape}')
-    print(f'检查open test的形状 {open_test.shape}')
-    print(f'检查close test的形状 {close_test.shape}')
+#     print('检查x all是不是等于 x train和y trian相加，再检查trian和test以及close和open的形状是否一致')
+#     # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
+#     print(f'检查X_all的形状 {X_all.shape}')
+#     print(f'检查x dataset train的形状 {X_dataset_train.shape}')
+#     print(f'检查y dataset train的形状 {y_dataset_train.shape}')
+#     print(f'检查x all是不是等于train和test相加 {len(X_all)},{len(X_dataset_test)+len(X_dataset_train)}')
+#     print(f'检查open train的形状 {open_train.shape}')
+#     print(f'检查close train的形状 {close_train.shape}')
+#     print(f'检查x dataset test的形状 {X_dataset_test.shape}')
+#     print(f'检查y dataset test的形状 {y_dataset_test.shape}')
+#     print(f'检查open test的形状 {open_test.shape}')
+#     print(f'检查close test的形状 {close_test.shape}')
 
-    # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
-    return X_all, X_dataset_train, y_dataset_train,ret_dataset_train, X_dataset_test, y_dataset_test,ret_dataset_test, feature_names,open_train,open_test,close_train,close_test, z.index ,ohlcva_df
+#     # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
+#     return X_all, X_dataset_train, y_dataset_train,ret_dataset_train, X_dataset_test, y_dataset_test,ret_dataset_test, feature_names,open_train,open_test,close_train,close_test, z.index ,ohlcva_df
 
 
 
@@ -905,6 +905,43 @@ def data_prepare(sym,
 
     # X_all 专门是为做batch prediction的时候，要用X_all生成test集要用到的factor_df, 因为factor的计算需要之前一段window中的feature值
     return X_all, X_dataset_train, y_dataset_train,ret_dataset_train, X_dataset_test, y_dataset_test,ret_dataset_test, feature_names,open_train,open_test,close_train,close_test, z.index ,ohlcva_df
+
+
+def oi_data_load(sym: str, data_dir: str, start_date: str, end_date: str, freq: str = '15min') -> pd.DataFrame:
+    """
+    加载 5min OI 数据并聚合到指定频率（如 15min）
+    """
+    # 假设 OI 数据存储在 data_dir/openInterest 目录下
+    channel_path = 'openInterest'
+    date_range_list = _generate_date_range(start_date, end_date, DataFrequency.DAILY)
+    
+    oi_list = []
+    for date_str in date_range_list:
+        file_path = f'{data_dir}/{channel_path}/openInterest_{date_str}_{sym.lower()}.csv'
+        if os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            oi_list.append(df)
+            
+    if not oi_list:
+        return pd.DataFrame()
+        
+    oi_df = pd.concat(oi_list)
+    oi_df['open_time'] = pd.to_datetime(oi_df['open_time'])
+    oi_df.set_index('open_time', inplace=True)
+    oi_df.sort_index(inplace=True)
+
+    # 聚合到 15min：关键点在于如何处理 5min -> 15min
+    # 我们通常关注 15min 结束时的 OI，以及这 15min 内的 OI 变化
+    df_resampled = oi_df.resample(freq, label='left', closed='left').agg({
+        'open_interest': 'last',           # 期末持仓
+        'sum_open_interest': 'mean',       # 平均持仓 (如果有该字段)
+    })
+    
+    # 构造基础 OI 因子（增加给 gplearn 挖掘的原始素材）
+    df_resampled['oi_diff'] = df_resampled['open_interest'].diff()
+    df_resampled['oi_pct_chg'] = df_resampled['open_interest'].pct_change()
+    
+    return df_resampled.fillna(method='ffill')
 
 
 
@@ -1300,16 +1337,23 @@ def data_prepare_coarse_grain_rolling_offset(
                          timeframe=timeframe, read_frequency=read_frequency, file_path=file_path)
     z_raw.index = pd.to_datetime(z_raw.index)
     
+    oi_df_15m = oi_data_load(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test, freq=timeframe)
+    # 3. Join 合并
+    if not oi_df_15m.empty:
+        z_raw = z_raw.join(oi_df_15m, how='left')
+        z_raw = z_raw.fillna(method='ffill')
 
-    liq_df = liquidations_data_load(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test)
-    liq_engine = LiquidationFactorEngine(liq_df, resample_freq='15m', stat_freq='15m')
-    bucket_quantiles=[0.90], 
-    bucket_window_hours=[24],
-    mining_windows=[24, 96, 672], 
-    mining_quantiles=[0.90, 0.95, 0.99]
-    df_liq_factors = liq_engine.process(bucket_quantiles=bucket_quantiles, bucket_window_hours=bucket_window_hours, mining_windows=mining_windows, mining_quantiles=mining_quantiles)
+    
+    # liq_df = liquidations_data_load(sym, data_dir=data_dir, start_date=start_date_train, end_date=end_date_test)
+    # liq_engine = LiquidationFactorEngine(liq_df, resample_freq='15m', stat_freq='15m')
+    # bucket_quantiles=[0.90], 
+    # bucket_window_hours=[24],
+    # mining_windows=[24, 96, 672], 
+    # mining_quantiles=[0.90, 0.95, 0.99]
+    # df_liq_factors = liq_engine.process(bucket_quantiles=bucket_quantiles, bucket_window_hours=bucket_window_hours, mining_windows=mining_windows, mining_quantiles=mining_quantiles)
+    # z_raw = z_raw.join(df_liq_factors, how='left')
 
-    z_raw = z_raw.join(df_liq_factors, how='left')
+
     z_raw = z_raw[(z_raw.index >= pd.to_datetime(start_date_train)) 
                   & (z_raw.index <= pd.to_datetime(end_date_test))]
     
