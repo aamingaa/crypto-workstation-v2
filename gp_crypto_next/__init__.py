@@ -8,4 +8,4 @@
 from . import originalFeature
 from . import dataload
 
-__all__ = ['genetic', 'functions', 'fitness', 'originalFeature', 'dataload']
+__all__ = ['genetic', 'functions', 'fitness', 'originalFeature', 'dataload', 'oi_dataload']

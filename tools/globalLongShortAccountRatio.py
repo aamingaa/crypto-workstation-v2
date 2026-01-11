@@ -8,6 +8,7 @@ import asyncio
 from typing import Optional, List
 from tardis_secrets import TARDIS_API_KEY as API_KEY
 DOWNLOAD_DIR = "/Users/aming/data/ETHUSDT"
+import time
 
 # 常见候选（不同版本/账户权限可能略有差异；跑一下就知道你账户能用哪些）
 CANDIDATE_EXCHANGES = [
@@ -82,6 +83,7 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         # 进度提示
         if count % 3000 == 0:
             print(f"已获取 {count} 条数据 | 当前时间: {timestamp} | 当前月份: {month_key} | 已保存月份: {saved_months}")
+            time.sleep(3)
     
     # 保存最后一个月的数据
     if current_month_data:

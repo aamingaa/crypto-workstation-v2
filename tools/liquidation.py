@@ -18,6 +18,8 @@ CANDIDATE_EXCHANGES = [
 ]
 client = TardisClient(api_key=API_KEY)
 
+import time
+
 async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-01", to_date: str="2023-01-02", channel_name: str="topLongShortAccountRatio", symbols: Optional[List[str]] = ["ethusdt"]):
     # 设定要下载的时间段 (Tardis 保存了数年的历史数据)
     messages = client.replay(
@@ -82,7 +84,8 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         # 进度提示
         if count % 3000 == 0:
             print(f"已获取 {count} 条数据 | 当前时间: {timestamp} | 当前月份: {month_key} | 已保存月份: {saved_months}")
-    
+            time.sleep(3)
+
     # 保存最后一个月的数据
     if current_month_data:
         save_month_data(current_month_key, current_month_data, out_dir)
