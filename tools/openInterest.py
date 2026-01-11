@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import asyncio
 from typing import Optional, List
+import time
 from tardis_secrets import TARDIS_API_KEY as API_KEY
 DOWNLOAD_DIR = "/Users/aming/data/ETHUSDT"
 
@@ -82,6 +83,7 @@ async def replay_data(exchange: str="binance-futures", from_date: str="2023-01-0
         # 进度提示
         if count % 3000 == 0:
             print(f"已获取 {count} 条数据 | 当前时间: {timestamp} | 当前月份: {month_key} | 已保存月份: {saved_months}")
+            time.sleep(3)
     
     # 保存最后一个月的数据
     if current_month_data:
@@ -292,4 +294,4 @@ if __name__ == "__main__":
 
     # https://docs.tardis.dev/historical-data-details/binance-futures topLongShortPositionRatio topLongShortAccountRatio takerlongshortRatio 
     
-    asyncio.run(replay_data(exchange="binance-futures", from_date="2022-01-01", to_date="2024-01-01", channel_name="openInterest", symbols=["ethusdt"]))
+    asyncio.run(replay_data(exchange="binance-futures", from_date="2022-06-01", to_date="2024-01-01", channel_name="openInterest", symbols=["ethusdt"]))
