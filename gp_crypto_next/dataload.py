@@ -125,7 +125,7 @@ def liquidations_data_load(sym: str, data_dir: str, start_date: str, end_date: s
     liq_df.drop(columns=['id', 'exchange', 'local_timestamp', 'symbol'], inplace=True)
     return liq_df
 
-def data_load_v2(sym: str, data_dir: str, start_date: str, end_date: str, 
+def data_load_v2(sym: str = 'ETHUSDT', data_dir: str = '/Users/aming/data/ETHUSDT', start_date: str = '2025-01-01', end_date: str = '2025-12-31', 
                  timeframe: str = '1h', read_frequency: str = 'monthly',
                  file_path: Optional[str] = None) -> pd.DataFrame:
     """
